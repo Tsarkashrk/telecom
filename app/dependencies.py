@@ -1,13 +1,19 @@
-from fastapi import Depends, HTTPException, status
+import secrets
+
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.database import get_db
 from app.security import verify_token
 from app.models import User
 from typing import Optional
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 
 async def get_current_user(
-    token: str,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     """
@@ -19,25 +25,34 @@ async def get_current_user(
         detail="Неверные учетные данные",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise credentials_exception
+
+    token = credentials.credentials
     payload = verify_token(token)
     if payload is None:
         raise credentials_exception
-    
-    user_id: Optional[int] = payload.get("sub")
-    if user_id is None:
+
+    user_id_raw = payload.get("sub")
+    if user_id_raw is None:
         raise credentials_exception
-    
+
+    try:
+        user_id = int(user_id_raw)
+    except (TypeError, ValueError):
+        raise credentials_exception
+
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise credentials_exception
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Пользователь неактивен"
         )
-    
+
     return user
 
 
@@ -81,3 +96,28 @@ async def verify_object_access(
         return True
     
     return False
+
+
+async def get_internal_service(
+    x_internal_api_key: Optional[str] = Header(None, alias="X-Internal-API-Key")
+) -> str:
+    """
+    Проверка доступа к внутренним billing API.
+    Доступ разрешен только сервису, знающему internal API key.
+    """
+    if not settings.internal_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Внутренний API недоступен"
+        )
+
+    if x_internal_api_key is None or not secrets.compare_digest(
+        x_internal_api_key,
+        settings.internal_api_key
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Доступ запрещен"
+        )
+
+    return "billing-service"

@@ -10,7 +10,7 @@ from app.schemas import (
     SubscriptionResponse, ActivateTariffRequest,
     TariffPlanResponse, InvoiceResponse, ErrorResponse
 )
-from app.dependencies import get_current_user, verify_object_access
+from app.dependencies import get_current_user, get_current_operator, verify_object_access
 from app.logging_config import log_audit, log_security_event, AuditAction
 
 router = APIRouter()
@@ -26,7 +26,7 @@ def get_available_tariffs(db: Session = Depends(get_db)):
     return tariffs
 
 
-@router.post("/subscriptions/activate", response_model=SubscriptionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/activate", response_model=SubscriptionResponse, status_code=status.HTTP_201_CREATED)
 def activate_tariff(
     request: ActivateTariffRequest,
     current_user: User = Depends(get_current_user),
@@ -125,7 +125,7 @@ def activate_tariff(
     return subscription
 
 
-@router.get("/subscriptions", response_model=List[SubscriptionResponse])
+@router.get("", response_model=List[SubscriptionResponse])
 def get_user_subscriptions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -145,7 +145,7 @@ def get_user_subscriptions(
     return subscriptions
 
 
-@router.get("/subscriptions/{subscription_id}", response_model=SubscriptionResponse)
+@router.get("/{subscription_id}", response_model=SubscriptionResponse)
 def get_subscription(
     subscription_id: int,
     current_user: User = Depends(get_current_user),
@@ -166,7 +166,7 @@ def get_subscription(
         )
     
     # Проверка прав доступа
-    if not (current_user.id == subscription.user_id or current_user.role == "admin"):
+    if not (current_user.id == subscription.user_id or current_user.role in ["operator", "admin"]):
         log_security_event(
             event_type="unauthorized_access_attempt",
             user_id=current_user.id,
@@ -181,3 +181,37 @@ def get_subscription(
     subscription.tariff_plan = db.query(TariffPlan).filter(TariffPlan.id == subscription.tariff_id).first()
     
     return subscription
+
+
+@router.get("/user/{user_id}", response_model=List[SubscriptionResponse])
+def get_user_subscriptions_for_operator(
+    user_id: int,
+    current_user: User = Depends(get_current_operator),
+    db: Session = Depends(get_db),
+    x_forwarded_for: Optional[str] = Header(None)
+):
+    """
+    Получить подписки пользователя для оператора или администратора.
+
+    Эндпоинт нужен для сценария поддержки клиентов:
+    оператор может просматривать подписки абонента, но не изменять их
+    от имени клиента.
+    """
+    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+
+    subscriptions = db.query(Subscription).filter(
+        Subscription.user_id == user_id
+    ).all()
+
+    for sub in subscriptions:
+        sub.tariff_plan = db.query(TariffPlan).filter(TariffPlan.id == sub.tariff_id).first()
+
+    log_audit(
+        action=AuditAction.SUBSCRIPTION_VIEWED,
+        user_id=current_user.id,
+        details=f"{current_user.role} accessed subscriptions for user {user_id}",
+        ip_address=client_ip,
+        success=True
+    )
+
+    return subscriptions

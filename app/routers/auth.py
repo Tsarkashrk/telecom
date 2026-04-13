@@ -6,10 +6,16 @@ from typing import Optional
 from app.database import get_db
 from app.models import User, Subscription, TariffPlan, Invoice
 from app.schemas import (
-    UserRegisterRequest, UserLoginRequest, TokenResponse,
+    UserRegisterRequest, UserLoginRequest, RefreshTokenRequest, TokenResponse,
     UserResponse, TariffPlanResponse, SubscriptionResponse, InvoiceResponse
 )
-from app.security import hash_password, verify_password, create_access_token, create_refresh_token
+from app.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    verify_token,
+)
 from app.dependencies import get_current_user, verify_object_access
 from app.logging_config import log_audit, log_security_event, AuditAction
 
@@ -208,3 +214,85 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     Получить информацию о текущем пользователе.
     """
     return current_user
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_tokens(
+    refresh_request: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+    x_forwarded_for: Optional[str] = Header(None)
+):
+    """
+    Обновить access token по refresh token.
+
+    Требования безопасности:
+    - Принимается только refresh token
+    - Проверяется тип токена и срок его жизни
+    - Для невалидного токена возвращается нейтральная ошибка
+    """
+    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+
+    payload = verify_token(refresh_request.refresh_token)
+    if payload is None or payload.get("type") != "refresh":
+        log_security_event(
+            event_type="invalid_refresh_token",
+            reason="Invalid or expired refresh token",
+            severity="WARNING"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверные учетные данные"
+        )
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверные учетные данные"
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверные учетные данные"
+        )
+
+    access_token = create_access_token(data={"sub": user.id})
+    new_refresh_token = create_refresh_token(data={"sub": user.id})
+
+    log_audit(
+        action=AuditAction.USER_LOGIN,
+        user_id=user.id,
+        details="Access token refreshed",
+        ip_address=client_ip,
+        success=True
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token
+    )
+
+
+@router.post("/logout", response_model=dict)
+def logout_user(
+    current_user: User = Depends(get_current_user),
+    x_forwarded_for: Optional[str] = Header(None)
+):
+    """
+    Завершить текущую сессию пользователя.
+
+    Для stateless JWT в MVP logout реализован как подтвержденный
+    сервером выход с обязательным аудитом. Клиент должен удалить токены.
+    """
+    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+
+    log_audit(
+        action=AuditAction.USER_LOGOUT,
+        user_id=current_user.id,
+        ip_address=client_ip,
+        success=True
+    )
+
+    return {"message": "Выход выполнен успешно"}

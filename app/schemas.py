@@ -53,6 +53,11 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class RefreshTokenRequest(BaseModel):
+    """Запрос на обновление access token"""
+    refresh_token: str = Field(..., min_length=1)
+
+
 class UserResponse(BaseModel):
     """Ответ с данными пользователя (без пароля)"""
     id: int

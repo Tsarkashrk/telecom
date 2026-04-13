@@ -7,7 +7,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.models import User, Invoice, Subscription
 from app.schemas import InvoiceResponse, ErrorResponse
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_current_operator
 from app.logging_config import log_audit, log_security_event, AuditAction
 
 router = APIRouter()
@@ -53,7 +53,7 @@ def get_invoice(
     Требования безопасности:
     - Проверка доступа к конкретному объекту (invoice_id)
     - Клиент может видеть только свои счета
-    - Администратор может видеть все счета
+    - Администратор и оператор могут видеть счета клиентов
     - Не возвращаем ПДн клиента в ответе
     """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
@@ -70,7 +70,7 @@ def get_invoice(
         )
     
     # Проверка прав доступа: client видит только свой счет
-    if invoice.user_id != current_user.id and current_user.role != "admin":
+    if invoice.user_id != current_user.id and current_user.role not in ["operator", "admin"]:
         log_security_event(
             event_type="unauthorized_invoice_access",
             user_id=current_user.id,
@@ -122,7 +122,7 @@ def get_invoice_status(
         )
     
     # Проверка доступа
-    if invoice.user_id != current_user.id and current_user.role != "admin":
+    if invoice.user_id != current_user.id and current_user.role not in ["operator", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещен"
@@ -139,32 +139,19 @@ def get_invoice_status(
 @router.get("/invoices/user/{user_id}", response_model=List[InvoiceResponse])
 def get_user_invoices_admin(
     user_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_operator),
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
     """
-    Получить счета пользователя (администраторский API).
+    Получить счета пользователя (операторский/администраторский API).
     
     Требования безопасности:
-    - Только администраторы могут использовать этот эндпоинт
+    - Только операторы и администраторы могут использовать этот эндпоинт
     - Логирование доступа
     - Параметризованный запрос
     """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
-    
-    # Проверка роли администратора на серверной стороне
-    if current_user.role != "admin":
-        log_security_event(
-            event_type="admin_access_denied",
-            user_id=current_user.id,
-            reason="Attempted to access admin invoice endpoint",
-            severity="WARNING"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещен"
-        )
     
     # Параметризованный запрос
     invoices = db.query(Invoice).filter(
@@ -174,7 +161,7 @@ def get_user_invoices_admin(
     log_audit(
         action=AuditAction.INVOICE_VIEWED,
         user_id=current_user.id,
-        details=f"Admin accessed invoices for user {user_id}",
+        details=f"{current_user.role} accessed invoices for user {user_id}",
         ip_address=client_ip,
         success=True
     )
