@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from app.database import get_db
@@ -134,6 +134,89 @@ def get_invoice_status(
         "amount": invoice.amount,
         "due_date": invoice.due_date.isoformat() if invoice.due_date else None
     }
+
+
+@router.post("/invoices/{invoice_id}/pay", response_model=InvoiceResponse)
+def pay_invoice(
+    invoice_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    x_forwarded_for: Optional[str] = Header(None)
+):
+    """
+    Оплатить счет и активировать связанную подписку по модели предоплаты.
+    """
+    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Счет не найден"
+        )
+
+    if invoice.user_id != current_user.id and current_user.role not in ["operator", "admin"]:
+        log_security_event(
+            event_type="unauthorized_invoice_payment_attempt",
+            user_id=current_user.id,
+            reason=f"Attempted to pay invoice {invoice_id} of user {invoice.user_id}",
+            severity="WARNING",
+            ip_address=client_ip
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен"
+        )
+
+    if invoice.status == "paid":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Счет уже оплачен"
+        )
+
+    if invoice.status == "overdue":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Просроченный счет нельзя оплатить через этот endpoint"
+        )
+
+    subscription = db.query(Subscription).filter(
+        Subscription.id == invoice.subscription_id
+    ).first()
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Подписка для счета не найдена"
+        )
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    invoice.status = "paid"
+    invoice.paid_at = now
+
+    subscription.status = "active"
+    subscription.is_active = True
+    subscription.activation_date = now
+    subscription.next_billing_date = now + timedelta(days=30)
+
+    db.commit()
+    db.refresh(invoice)
+
+    log_audit(
+        action=AuditAction.INVOICE_PAID,
+        user_id=current_user.id,
+        details=f"Invoice {invoice.id} paid; subscription {subscription.id} activated",
+        ip_address=client_ip,
+        success=True
+    )
+    log_audit(
+        action=AuditAction.TARIFF_ACTIVATED,
+        user_id=subscription.user_id,
+        details=f"Subscription {subscription.id} activated after prepaid invoice payment",
+        ip_address=client_ip,
+        success=True
+    )
+
+    return invoice
 
 
 @router.get("/invoices/user/{user_id}", response_model=List[InvoiceResponse])

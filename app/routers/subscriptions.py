@@ -63,18 +63,19 @@ def activate_tariff(
             detail="Тариф не найден"
         )
     
-    # Проверка, есть ли уже активная подписка
+    # В модели предоплаты запрещаем создавать новую подписку,
+    # если у пользователя уже есть активная или ожидающая оплаты подписка.
     existing_subscription = db.query(Subscription).filter(
         and_(
             Subscription.user_id == current_user.id,
-            Subscription.is_active == True
+            Subscription.status.in_(["pending_payment", "active"])
         )
     ).first()
     
     if existing_subscription:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пользователь уже имеет активную подписку"
+            detail="У пользователя уже есть активная или ожидающая оплаты подписка"
         )
     
     # Создание подписки
@@ -84,10 +85,10 @@ def activate_tariff(
     subscription = Subscription(
         user_id=current_user.id,
         tariff_id=tariff.id,
-        status="active",
+        status="pending_payment",
         activation_date=now,
         next_billing_date=next_billing,
-        is_active=True
+        is_active=False
     )
     
     db.add(subscription)
@@ -109,11 +110,11 @@ def activate_tariff(
     db.add(invoice)
     db.commit()
     
-    # Логирование
+    # Логирование: при предоплате активация откладывается до оплаты счета
     log_audit(
-        action=AuditAction.TARIFF_ACTIVATED,
+        action=AuditAction.INVOICE_CREATED,
         user_id=current_user.id,
-        details=f"Tariff ID: {tariff.id}, Plan: {tariff.name}",
+        details=f"Prepaid activation requested for tariff {tariff.id}; invoice created",
         ip_address=client_ip,
         success=True
     )

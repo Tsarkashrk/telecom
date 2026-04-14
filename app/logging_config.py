@@ -21,6 +21,7 @@ class AuditAction(str, Enum):
     USER_LOGOUT = "user_logout"
     TARIFF_ACTIVATED = "tariff_activated"
     INVOICE_CREATED = "invoice_created"
+    INVOICE_PAID = "invoice_paid"
     INVOICE_VIEWED = "invoice_viewed"
     SUBSCRIPTION_VIEWED = "subscription_viewed"
     UNAUTHORIZED_ACCESS_ATTEMPT = "unauthorized_access_attempt"

@@ -7,7 +7,7 @@ import logging
 
 from app.database import engine
 from app.models import Base
-from app.routers import auth, subscriptions, invoices, internal_billing
+from app.routers import auth, subscriptions, invoices
 from app.logging_config import log_security_event
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,6 @@ app = FastAPI(
 app.include_router(auth.router, prefix="/api/auth", tags=["Аутентификация"])
 app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Подписки"])
 app.include_router(invoices.router, prefix="/api/billing", tags=["Биллинг"])
-app.include_router(
-    internal_billing.router,
-    prefix="/api/internal/billing",
-    tags=["Внутренний биллинг"]
-)
 
 
 # Обработчик исключений для безопасных сообщений об ошибках
