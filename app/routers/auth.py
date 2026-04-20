@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.database import get_db
-from app.models import User, Subscription, TariffPlan, Invoice
+from app.models import User
 from app.schemas import (
     UserRegisterRequest, UserLoginRequest, RefreshTokenRequest, TokenResponse,
-    UserResponse, TariffPlanResponse, SubscriptionResponse, InvoiceResponse
+    UserResponse
 )
 from app.security import (
     hash_password,
