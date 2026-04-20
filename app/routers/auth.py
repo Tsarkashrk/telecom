@@ -21,7 +21,7 @@ from app.logging_config import log_audit, log_security_event, AuditAction
 
 router = APIRouter()
 
-login_attempts = {}
+login_attempts: dict[str, tuple[int, datetime]] = {}
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION = 900  
 

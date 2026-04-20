@@ -107,7 +107,12 @@ def get_user_subscriptions(
         Subscription.user_id == current_user.id
     ).all()
     for sub in subscriptions:
-        sub.tariff_plan = db.query(TariffPlan).filter(TariffPlan.id == sub.tariff_id).first()
+        tariff: TariffPlan | None = db.get(TariffPlan, sub.tariff_id)
+
+        if tariff is None:
+            raise HTTPException(status_code=404, detail="Tariff not found")
+
+        sub.tariff_plan = tariff
     
     return subscriptions
 
@@ -116,31 +121,45 @@ def get_user_subscriptions(
 def get_subscription(
     subscription_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    subscription = db.query(Subscription).filter(
-        Subscription.id == subscription_id
-    ).first()
-    
-    if not subscription:
+    subscription: Subscription | None = (
+        db.query(Subscription)
+        .filter(Subscription.id == subscription_id)
+        .first()
+    )
+
+    if subscription is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Подписка не найдена"
+            detail="Подписка не найдена",
         )
-    if not (current_user.id == subscription.user_id or current_user.role in ["operator", "admin"]):
+
+    if not (
+        current_user.id == subscription.user_id
+        or current_user.role in ["operator", "admin"]
+    ):
         log_security_event(
             event_type="unauthorized_access_attempt",
             user_id=current_user.id,
             reason=f"Attempted access to subscription {subscription_id}",
-            severity="WARNING"
+            severity="WARNING",
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещен"
+            detail="Доступ запрещен",
         )
-    
-    subscription.tariff_plan = db.query(TariffPlan).filter(TariffPlan.id == subscription.tariff_id).first()
-    
+
+    tariff: TariffPlan | None = db.get(TariffPlan, subscription.tariff_id)
+
+    if tariff is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Тариф не найден",
+        )
+
+    subscription.tariff_plan = tariff
+
     return subscription
 
 
@@ -158,7 +177,12 @@ def get_user_subscriptions_for_operator(
     ).all()
 
     for sub in subscriptions:
-        sub.tariff_plan = db.query(TariffPlan).filter(TariffPlan.id == sub.tariff_id).first()
+        tariff: TariffPlan | None = db.get(TariffPlan, sub.tariff_id)
+
+    if tariff is None:
+        raise HTTPException(status_code=404, detail="Tariff not found")
+
+    sub.tariff_plan = tariff
 
     log_audit(
         action=AuditAction.SUBSCRIPTION_VIEWED,
