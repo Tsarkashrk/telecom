@@ -16,10 +16,6 @@ async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db)
 ) -> User:
-    """
-    Зависимость для получения текущего пользователя из токена.
-    Проверяет валидность токена и наличие пользователя в БД.
-    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Неверные учетные данные",
@@ -57,10 +53,6 @@ async def get_current_user(
 
 
 async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
-    """
-    Зависимость для проверки роли администратора.
-    Проверяется на серверной стороне.
-    """
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -70,9 +62,6 @@ async def get_current_admin(current_user: User = Depends(get_current_user)) -> U
 
 
 async def get_current_operator(current_user: User = Depends(get_current_user)) -> User:
-    """
-    Зависимость для проверки роли оператора или администратора.
-    """
     if current_user.role not in ["operator", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -85,10 +74,6 @@ async def verify_object_access(
     resource_owner_id: int,
     current_user: User
 ) -> bool:
-    """
-    Проверка доступа к конкретному объекту.
-    Клиент может видеть только свои данные, если не администратор.
-    """
     if current_user.role == "admin":
         return True
     
@@ -101,10 +86,6 @@ async def verify_object_access(
 async def get_internal_service(
     x_internal_api_key: Optional[str] = Header(None, alias="X-Internal-API-Key")
 ) -> str:
-    """
-    Доступ к внутренним billing endpoint.
-    Предназначен только для service-to-service вызовов.
-    """
     if not settings.internal_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

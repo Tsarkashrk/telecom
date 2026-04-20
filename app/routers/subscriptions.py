@@ -18,10 +18,6 @@ router = APIRouter()
 
 @router.get("/tariffs", response_model=List[TariffPlanResponse])
 def get_available_tariffs(db: Session = Depends(get_db)):
-    """
-    Получить список доступных тарифных планов.
-    Доступно всем аутентифицированным пользователям.
-    """
     tariffs = db.query(TariffPlan).filter(TariffPlan.is_active == True).all()
     return tariffs
 
@@ -33,20 +29,7 @@ def activate_tariff(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Активировать тариф для текущего пользователя.
-    
-    Требования безопасности:
-    - Проверка прав доступа: пользователь может активировать тариф только для себя
-    - Валидация tariff_id через Pydantic
-    - Проверка существования тарифа
-    - Параметризованный запрос
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
-    
-    # Валидация tariff_id была выполнена Pydantic (gt=0)
-    
-    # Проверка существования тарифа (параметризованный запрос)
     tariff = db.query(TariffPlan).filter(
         and_(TariffPlan.id == request.tariff_id, TariffPlan.is_active == True)
     ).first()
@@ -62,9 +45,6 @@ def activate_tariff(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Тариф не найден"
         )
-    
-    # В модели предоплаты запрещаем создавать новую подписку,
-    # если у пользователя уже есть активная или ожидающая оплаты подписка.
     existing_subscription = db.query(Subscription).filter(
         and_(
             Subscription.user_id == current_user.id,
@@ -77,8 +57,6 @@ def activate_tariff(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="У пользователя уже есть активная или ожидающая оплаты подписка"
         )
-    
-    # Создание подписки
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     next_billing = now + timedelta(days=30)
     
@@ -94,8 +72,6 @@ def activate_tariff(
     db.add(subscription)
     db.commit()
     db.refresh(subscription)
-    
-    # Создание первого счета
     invoice = Invoice(
         user_id=current_user.id,
         subscription_id=subscription.id,
@@ -109,8 +85,6 @@ def activate_tariff(
     
     db.add(invoice)
     db.commit()
-    
-    # Логирование: при предоплате активация откладывается до оплаты счета
     log_audit(
         action=AuditAction.INVOICE_CREATED,
         user_id=current_user.id,
@@ -118,8 +92,6 @@ def activate_tariff(
         ip_address=client_ip,
         success=True
     )
-    
-    # Загрузка связанного тарифа
     db.refresh(subscription)
     subscription.tariff_plan = tariff
     
@@ -131,15 +103,9 @@ def get_user_subscriptions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Получить подписки текущего пользователя.
-    Проверка прав доступа: пользователь видит только свои подписки.
-    """
     subscriptions = db.query(Subscription).filter(
         Subscription.user_id == current_user.id
     ).all()
-    
-    # Загрузка связанных тарифов
     for sub in subscriptions:
         sub.tariff_plan = db.query(TariffPlan).filter(TariffPlan.id == sub.tariff_id).first()
     
@@ -152,10 +118,6 @@ def get_subscription(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Получить информацию о конкретной подписке.
-    Проверка доступа к конкретному объекту.
-    """
     subscription = db.query(Subscription).filter(
         Subscription.id == subscription_id
     ).first()
@@ -165,8 +127,6 @@ def get_subscription(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Подписка не найдена"
         )
-    
-    # Проверка прав доступа
     if not (current_user.id == subscription.user_id or current_user.role in ["operator", "admin"]):
         log_security_event(
             event_type="unauthorized_access_attempt",
@@ -191,13 +151,6 @@ def get_user_subscriptions_for_operator(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Получить подписки пользователя для оператора или администратора.
-
-    Эндпоинт нужен для сценария поддержки клиентов:
-    оператор может просматривать подписки абонента, но не изменять их
-    от имени клиента.
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
 
     subscriptions = db.query(Subscription).filter(

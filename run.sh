@@ -1,10 +1,7 @@
 #!/bin/bash
-# Быстрый запуск приложения (после выполнения setup.sh)
 
 echo "🚀 Запуск Телекоммуникационной платформы MVP"
 echo "============================================"
-
-# Проверка активации venv
 if [[ "$VIRTUAL_ENV" == "" ]]; then
     echo "⚠️  Virtual environment не активирована"
     echo "Выполните: source venv/bin/activate"

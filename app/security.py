@@ -3,23 +3,18 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.config import settings
-
-# Контекст для хеширования паролей (bcrypt)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    """Хеширование пароля с bcrypt"""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Проверка пароля"""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Создание JWT access token с ограниченным сроком жизни"""
     to_encode = data.copy()
     if "sub" in to_encode:
         to_encode["sub"] = str(to_encode["sub"])
@@ -41,7 +36,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def create_refresh_token(data: dict) -> str:
-    """Создание JWT refresh token с более длительным сроком жизни"""
     to_encode = data.copy()
     if "sub" in to_encode:
         to_encode["sub"] = str(to_encode["sub"])
@@ -58,7 +52,6 @@ def create_refresh_token(data: dict) -> str:
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """Проверка и декодирование JWT токена"""
     try:
         payload = jwt.decode(
             token,

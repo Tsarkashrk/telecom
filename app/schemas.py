@@ -5,7 +5,6 @@ import re
 
 
 class UserRegisterRequest(BaseModel):
-    """Схема для регистрации пользователя с валидацией"""
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     phone: str = Field(..., min_length=10, max_length=20)
@@ -14,7 +13,6 @@ class UserRegisterRequest(BaseModel):
     @field_validator('username')
     @classmethod
     def validate_username(cls, v):
-        """Валидация имени пользователя: только буквы, цифры, подчеркивания"""
         if not re.match(r'^[a-zA-Z0-9_]+$', v):
             raise ValueError('Username содержит недопустимые символы')
         return v
@@ -22,7 +20,6 @@ class UserRegisterRequest(BaseModel):
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v):
-        """Валидация номера телефона: только цифры и символы + - ()"""
         if not re.match(r'^[+\d\s\-()]+$', v):
             raise ValueError('Некорректный формат номера телефона')
         return v
@@ -30,7 +27,6 @@ class UserRegisterRequest(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
-        """Валидация пароля: минимум одна цифра, буква, спецсимвол"""
         if not re.search(r'\d', v):
             raise ValueError('Пароль должен содержать цифру')
         if not re.search(r'[a-zA-Z]', v):
@@ -41,25 +37,21 @@ class UserRegisterRequest(BaseModel):
 
 
 class UserLoginRequest(BaseModel):
-    """Схема для входа пользователя"""
     username: str
     password: str
 
 
 class TokenResponse(BaseModel):
-    """Ответ с токенами доступа"""
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
 
 
 class RefreshTokenRequest(BaseModel):
-    """Запрос на обновление access token"""
     refresh_token: str = Field(..., min_length=1)
 
 
 class UserResponse(BaseModel):
-    """Ответ с данными пользователя (без пароля)"""
     id: int
     username: str
     email: str
@@ -73,7 +65,6 @@ class UserResponse(BaseModel):
 
 
 class TariffPlanResponse(BaseModel):
-    """Ответ с информацией о тарифном плане"""
     id: int
     name: str
     description: Optional[str] = None
@@ -88,7 +79,6 @@ class TariffPlanResponse(BaseModel):
 
 
 class SubscriptionResponse(BaseModel):
-    """Ответ с информацией о подписке"""
     id: int
     user_id: int
     tariff_id: int
@@ -103,7 +93,6 @@ class SubscriptionResponse(BaseModel):
 
 
 class InvoiceResponse(BaseModel):
-    """Ответ с информацией о счете (без ПДн)"""
     id: int
     subscription_id: int
     amount: float
@@ -119,11 +108,9 @@ class InvoiceResponse(BaseModel):
 
 
 class ActivateTariffRequest(BaseModel):
-    """Запрос на активацию тарифа"""
     tariff_id: int = Field(..., gt=0)
 
 
 class ErrorResponse(BaseModel):
-    """Стандартный ответ об ошибке"""
     error: str
     detail: Optional[str] = None

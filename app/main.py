@@ -12,27 +12,18 @@ from app.logging_config import log_security_event
 
 logger = logging.getLogger(__name__)
 
-# Создание таблиц при запуске
-Base.metadata.create_all(bind=engine)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Управление жизненным циклом приложения"""
     logger.info("Application startup")
     yield
     logger.info("Application shutdown")
-
-
-# Инициализация FastAPI приложения
 app = FastAPI(
     title="Телекоммуникационная платформа MVP",
     description="Система регистрации клиентов и биллинга с аутентификацией и авторизацией",
     version="1.0.0",
     lifespan=lifespan
 )
-
-# Подключение роутеров
 app.include_router(auth.router, prefix="/api/auth", tags=["Аутентификация"])
 app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Подписки"])
 app.include_router(invoices.router, prefix="/api/billing", tags=["Биллинг"])
@@ -41,15 +32,8 @@ app.include_router(
     prefix="/api/internal/billing",
     tags=["Внутренний биллинг"]
 )
-
-
-# Обработчик исключений для безопасных сообщений об ошибках
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
-    """
-    Обработчик ошибок БД.
-    Возвращаем нейтральное сообщение об ошибке.
-    """
     logger.error(f"Database error: {str(exc)}")
     log_security_event(
         event_type="database_error",
@@ -64,9 +48,6 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """
-    Обработчик HTTP исключений с логированием.
-    """
     if exc.status_code >= 400:
         client_ip = request.headers.get("x-forwarded-for", "unknown")
         if exc.status_code == 401 or exc.status_code == 403:
@@ -84,7 +65,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.get("/", tags=["Информация"])
 async def root():
-    """Корневой эндпоинт API"""
     return {
         "name": "Telecom MVP",
         "version": "1.0.0",
@@ -94,7 +74,6 @@ async def root():
 
 @app.get("/health", tags=["Информация"])
 async def health_check():
-    """Проверка здоровья приложения"""
     return {"status": "healthy"}
 
 

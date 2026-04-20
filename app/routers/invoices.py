@@ -18,14 +18,7 @@ def get_user_invoices(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Получить все счета текущего пользователя.
-    
-    Требования безопасности:
-    - Проверка прав доступа: клиент видит только свои счета
-    - Не возвращаем лишние поля (в том числе email, phone и другие ПДн)
-    - Параметризованный запрос
-    """
+
     invoices = db.query(Invoice).filter(
         Invoice.user_id == current_user.id
     ).all()
@@ -47,18 +40,8 @@ def get_invoice(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Получить счет по ID.
-    
-    Требования безопасности:
-    - Проверка доступа к конкретному объекту (invoice_id)
-    - Клиент может видеть только свои счета
-    - Администратор и оператор могут видеть счета клиентов
-    - Не возвращаем ПДн клиента в ответе
-    """
+
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
-    
-    # Параметризованный запрос
     invoice = db.query(Invoice).filter(
         Invoice.id == invoice_id
     ).first()
@@ -68,8 +51,6 @@ def get_invoice(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Счет не найден"
         )
-    
-    # Проверка прав доступа: client видит только свой счет
     if invoice.user_id != current_user.id and current_user.role not in ["operator", "admin"]:
         log_security_event(
             event_type="unauthorized_invoice_access",
@@ -77,7 +58,6 @@ def get_invoice(
             reason=f"Attempted to access invoice {invoice_id} of user {invoice.user_id}",
             severity="WARNING"
         )
-        # Логирование попытки несанкционированного доступа
         log_audit(
             action=AuditAction.UNAUTHORIZED_ACCESS_ATTEMPT,
             user_id=current_user.id,
@@ -89,8 +69,6 @@ def get_invoice(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещен"
         )
-    
-    # Логирование успешного просмотра счета
     log_audit(
         action=AuditAction.INVOICE_VIEWED,
         user_id=current_user.id,
@@ -107,10 +85,6 @@ def get_invoice_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Получить статус счета.
-    Упрощенный эндпоинт для проверки статуса платежа.
-    """
     invoice = db.query(Invoice).filter(
         Invoice.id == invoice_id
     ).first()
@@ -120,8 +94,6 @@ def get_invoice_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Счет не найден"
         )
-    
-    # Проверка доступа
     if invoice.user_id != current_user.id and current_user.role not in ["operator", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -143,9 +115,6 @@ def pay_invoice(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Оплатить счет и активировать связанную подписку по модели предоплаты.
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
 
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
@@ -226,17 +195,7 @@ def get_user_invoices_admin(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Получить счета пользователя (операторский/администраторский API).
-    
-    Требования безопасности:
-    - Только операторы и администраторы могут использовать этот эндпоинт
-    - Логирование доступа
-    - Параметризованный запрос
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
-    
-    # Параметризованный запрос
     invoices = db.query(Invoice).filter(
         Invoice.user_id == user_id
     ).all()

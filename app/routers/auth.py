@@ -21,14 +21,12 @@ from app.logging_config import log_audit, log_security_event, AuditAction
 
 router = APIRouter()
 
-# Защита от brute-force (простая реализация)
 login_attempts = {}
 MAX_LOGIN_ATTEMPTS = 5
-LOCKOUT_DURATION = 900  # 15 минут
+LOCKOUT_DURATION = 900  
 
 
 def check_login_attempts(username: str) -> bool:
-    """Проверка попыток входа"""
     if username not in login_attempts:
         return True
     
@@ -44,7 +42,6 @@ def check_login_attempts(username: str) -> bool:
 
 
 def record_login_attempt(username: str, success: bool) -> None:
-    """Запись попытки входа"""
     if success:
         if username in login_attempts:
             del login_attempts[username]
@@ -62,17 +59,9 @@ def register_user(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Регистрация нового пользователя.
-    
-    Требования безопасности:
-    - Валидация всех входных данных через Pydantic
-    - Хеширование пароля bcrypt
-    - Проверка уникальности email и username
-    """
+
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
     
-    # Проверка уникальности username
     existing_user = db.query(User).filter(User.username == user_data.username).first()
     if existing_user:
         log_security_event(
@@ -85,7 +74,6 @@ def register_user(
             detail="Пользователь с таким именем уже существует"
         )
     
-    # Проверка уникальности email
     existing_email = db.query(User).filter(User.email == user_data.email).first()
     if existing_email:
         log_security_event(
@@ -98,7 +86,6 @@ def register_user(
             detail="Email уже зарегистрирован"
         )
     
-    # Проверка уникальности телефона
     existing_phone = db.query(User).filter(User.phone == user_data.phone).first()
     if existing_phone:
         raise HTTPException(
@@ -106,7 +93,6 @@ def register_user(
             detail="Номер телефона уже зарегистрирован"
         )
     
-    # Создание пользователя
     hashed_password = hash_password(user_data.password)
     new_user = User(
         username=user_data.username,
@@ -120,7 +106,6 @@ def register_user(
     db.commit()
     db.refresh(new_user)
     
-    # Логирование успешной регистрации
     log_audit(
         action=AuditAction.USER_REGISTERED,
         user_id=new_user.id,
@@ -137,18 +122,9 @@ def login_user(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Вход пользователя.
-    
-    Требования безопасности:
-    - Проверка пароля против хеша
-    - Генерация JWT токена с ограниченным сроком жизни (access + refresh)
-    - Защита от brute-force атак
-    - Нейтральное сообщение об ошибке
-    """
+
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
     
-    # Проверка попыток входа
     if not check_login_attempts(credentials.username):
         log_security_event(
             event_type="brute_force_attempt",
@@ -160,10 +136,8 @@ def login_user(
             detail="Слишком много попыток входа. Попробуйте позже"
         )
     
-    # Поиск пользователя
     user = db.query(User).filter(User.username == credentials.username).first()
     
-    # Нейтральное сообщение об ошибке (не раскрываем информацию)
     if user is None or not verify_password(credentials.password, user.hashed_password):
         record_login_attempt(credentials.username, False)
         log_security_event(
@@ -190,11 +164,9 @@ def login_user(
     
     record_login_attempt(credentials.username, True)
     
-    # Генерация токенов
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})
     
-    # Логирование успешного входа
     log_audit(
         action=AuditAction.USER_LOGIN,
         user_id=user.id,
@@ -210,9 +182,6 @@ def login_user(
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """
-    Получить информацию о текущем пользователе.
-    """
     return current_user
 
 
@@ -222,14 +191,7 @@ def refresh_tokens(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Обновить access token по refresh token.
 
-    Требования безопасности:
-    - Принимается только refresh token
-    - Проверяется тип токена и срок его жизни
-    - Для невалидного токена возвращается нейтральная ошибка
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
 
     payload = verify_token(refresh_request.refresh_token)
@@ -280,12 +242,7 @@ def logout_user(
     current_user: User = Depends(get_current_user),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Завершить текущую сессию пользователя.
 
-    Для stateless JWT в MVP logout реализован как подтвержденный
-    сервером выход с обязательным аудитом. Клиент должен удалить токены.
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
 
     log_audit(

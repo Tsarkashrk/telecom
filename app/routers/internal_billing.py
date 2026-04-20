@@ -24,15 +24,7 @@ def generate_next_invoice(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    """
-    Внутренний billing API для генерации следующего счета.
 
-    Логика:
-    - работает только для активной подписки;
-    - недоступен клиентам, операторам и администраторам по JWT;
-    - защищен отдельным internal API key;
-    - предотвращает создание дубля счета на тот же billing period.
-    """
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "internal"
 
     subscription = db.query(Subscription).filter(

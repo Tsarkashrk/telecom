@@ -1,21 +1,28 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
+from app import database as database_module
+from app import logging_config as logging_config_module
 from app.main import app
 from app.database import get_db
 from app.models import Base, User, TariffPlan
 from app.security import hash_password
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+SQLALCHEMY_DATABASE_URL = "sqlite://"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base.metadata.create_all(bind=engine)
+database_module.SessionLocal = TestingSessionLocal
+logging_config_module.database.SessionLocal = TestingSessionLocal
 
 
 def override_get_db():
@@ -32,7 +39,6 @@ client = TestClient(app)
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_test_data():
-    """Создание тестовых данных"""
     db = TestingSessionLocal()
     
     test_user = User(
@@ -72,10 +78,8 @@ def setup_test_data():
 
 
 class TestAuth:
-    """Тесты аутентификации"""
     
     def test_register_user_success(self):
-        """Тест успешной регистрации"""
         response = client.post(
             "/api/auth/register",
             json={
@@ -89,7 +93,6 @@ class TestAuth:
         assert response.json()["username"] == "newuser"
     
     def test_register_duplicate_username(self):
-        """Тест регистрации с дублирующимся username"""
         response = client.post(
             "/api/auth/register",
             json={
@@ -102,7 +105,6 @@ class TestAuth:
         assert response.status_code == 400
     
     def test_login_success(self):
-        """Тест успешного входа"""
         response = client.post(
             "/api/auth/login",
             json={
@@ -115,7 +117,6 @@ class TestAuth:
         assert "refresh_token" in response.json()
     
     def test_login_invalid_password(self):
-        """Тест входа с неверным пароль"""
         response = client.post(
             "/api/auth/login",
             json={
@@ -127,7 +128,6 @@ class TestAuth:
         assert "Неверное имя пользователя или пароль" in response.json()["error"]
     
     def test_login_nonexistent_user(self):
-        """Тест входа для несуществующего пользователя"""
         response = client.post(
             "/api/auth/login",
             json={
@@ -138,7 +138,6 @@ class TestAuth:
         assert response.status_code == 401
     
     def test_get_current_user(self):
-        """Тест получения информации о текущем пользователе"""
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -157,7 +156,6 @@ class TestAuth:
         assert "hashed_password" not in response.json()
     
     def test_get_current_user_invalid_token(self):
-        """Тест получения информации с неверным токеном"""
         response = client.get(
             "/api/auth/me",
             headers={"Authorization": "Bearer invalid_token"}
@@ -166,16 +164,13 @@ class TestAuth:
 
 
 class TestSubscriptions:
-    """Тесты подписок"""
     
     def test_get_tariffs(self):
-        """Тест получения списка тарифов"""
         response = client.get("/api/subscriptions/tariffs")
         assert response.status_code == 200
         assert len(response.json()) > 0
     
     def test_activate_tariff_success(self):
-        """Тест активации тарифа"""
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -191,10 +186,9 @@ class TestSubscriptions:
             headers={"Authorization": f"Bearer {token}"}
         )
         assert response.status_code == 201
-        assert response.json()["status"] == "active"
+        assert response.json()["status"] == "pending_payment"
     
     def test_get_subscriptions(self):
-        """Тест получения подписок пользователя"""
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -213,10 +207,8 @@ class TestSubscriptions:
 
 
 class TestInvoices:
-    """Тесты биллинга"""
     
     def test_get_invoices(self):
-        """Тест получения счетов"""
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -234,16 +226,13 @@ class TestInvoices:
         assert isinstance(response.json(), list)
     
     def test_get_invoice_unauthorized(self):
-        """Тест попытки доступа к счету без авторизации"""
         response = client.get("/api/billing/invoices/1")
         assert response.status_code == 401
 
 
 class TestValidation:
-    """Тесты валидации входных данных"""
     
     def test_register_invalid_username(self):
-        """Тест регистрации с недопустимым username"""
         response = client.post(
             "/api/auth/register",
             json={
@@ -256,7 +245,6 @@ class TestValidation:
         assert response.status_code == 422
     
     def test_register_invalid_phone(self):
-        """Тест регистрации с недопустимым номером телефона"""
         response = client.post(
             "/api/auth/register",
             json={
@@ -269,7 +257,6 @@ class TestValidation:
         assert response.status_code == 422
     
     def test_register_weak_password(self):
-        """Тест регистрации со слабым пароль"""
         response = client.post(
             "/api/auth/register",
             json={
@@ -282,7 +269,6 @@ class TestValidation:
         assert response.status_code == 422
     
     def test_register_short_username(self):
-        """Тест регистрации с коротким username"""
         response = client.post(
             "/api/auth/register",
             json={
