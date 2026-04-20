@@ -1,84 +1,102 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Enum as SQLEnum, ForeignKey, Boolean, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import String, Integer, DateTime, Float, ForeignKey, Boolean, Text
 from datetime import datetime
-import enum
+from typing import List, Optional
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class User(Base):
     __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=False)
-    phone = Column(String(20), unique=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)  
-    role = Column(String(20), default="customer", nullable=False)  
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
-    invoices = relationship("Invoice", back_populates="user", cascade="all, delete-orphan")
-    audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    phone: Mapped[str] = mapped_column(String(20), unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="customer")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    subscriptions: Mapped[List["Subscription"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    invoices: Mapped[List["Invoice"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    audit_logs: Mapped[List["AuditLog"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class TariffPlan(Base):
     __tablename__ = "tariff_plans"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
-    description = Column(Text, nullable=True)
-    monthly_price = Column(Float, nullable=False)  
-    data_limit_gb = Column(Float, nullable=False)  
-    minutes_limit = Column(Integer, nullable=False)  
-    sms_limit = Column(Integer, nullable=False)  
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    subscriptions = relationship("Subscription", back_populates="tariff_plan")
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    monthly_price: Mapped[float] = mapped_column(Float)
+    data_limit_gb: Mapped[float] = mapped_column(Float)
+    minutes_limit: Mapped[int] = mapped_column(Integer)
+    sms_limit: Mapped[int] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    subscriptions: Mapped[List["Subscription"]] = relationship(
+        back_populates="tariff_plan"
+    )
 
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    tariff_id = Column(Integer, ForeignKey("tariff_plans.id"), nullable=False)
-    status = Column(String(20), default="active", nullable=False)  
-    activation_date = Column(DateTime, default=datetime.utcnow, nullable=False)
-    next_billing_date = Column(DateTime, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-    user = relationship("User", back_populates="subscriptions")
-    tariff_plan = relationship("TariffPlan", back_populates="subscriptions")
-    invoices = relationship("Invoice", back_populates="subscription", cascade="all, delete-orphan")
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    tariff_id: Mapped[int] = mapped_column(ForeignKey("tariff_plans.id"))
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    activation_date: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    next_billing_date: Mapped[datetime]
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    user: Mapped["User"] = relationship(back_populates="subscriptions")
+    tariff_plan: Mapped["TariffPlan"] = relationship(back_populates="subscriptions")
+    invoices: Mapped[List["Invoice"]] = relationship(
+        back_populates="subscription", cascade="all, delete-orphan"
+    )
 
 
 class Invoice(Base):
     __tablename__ = "invoices"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    subscription_id = Column(Integer, ForeignKey("subscriptions.id"), nullable=False)
-    amount = Column(Float, nullable=False)
-    status = Column(String(20), default="pending", nullable=False)  
-    billing_period_start = Column(DateTime, nullable=False)
-    billing_period_end = Column(DateTime, nullable=False)
-    due_date = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    paid_at = Column(DateTime, nullable=True)
-    user = relationship("User", back_populates="invoices")
-    subscription = relationship("Subscription", back_populates="invoices")
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"))
+    amount: Mapped[float]
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    billing_period_start: Mapped[datetime]
+    billing_period_end: Mapped[datetime]
+    due_date: Mapped[datetime]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    paid_at: Mapped[Optional[datetime]]
+
+    user: Mapped["User"] = relationship(back_populates="invoices")
+    subscription: Mapped["Subscription"] = relationship(back_populates="invoices")
 
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    action = Column(String(100), nullable=False)
-    action_details = Column(Text, nullable=True)
-    ip_address = Column(String(50), nullable=True)
-    success = Column(Boolean, default=True, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    user = relationship("User", back_populates="audit_logs")
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(100))
+    action_details: Mapped[Optional[str]] = mapped_column(Text)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(50))
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    timestamp: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    user: Mapped[Optional["User"]] = relationship(back_populates="audit_logs")

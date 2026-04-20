@@ -2,8 +2,10 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from app import database
+from app.database import SessionLocal
 from app.models import AuditLog
+
+# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -13,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class AuditAction(str, Enum):
+    """Типы действий для аудита"""
     USER_REGISTERED = "user_registered"
     USER_LOGIN = "user_login"
     USER_LOGOUT = "user_logout"
@@ -28,14 +31,20 @@ class AuditAction(str, Enum):
 
 def _persist_audit_record(
     action: str,
-    user_id: int = None,
-    details: str = None,
-    ip_address: str = None,
+    user_id: int | None = None,
+    details: str | None = None,
+    ip_address: str | None = None,
     success: bool = True
 ) -> None:
+    """
+    Сохраняет запись аудита в БД.
+
+    Ошибка аудита не должна ломать бизнес-операцию, поэтому
+    исключения только журналируются.
+    """
     db = None
     try:
-        db = database.SessionLocal()
+        db = SessionLocal()
         audit_record = AuditLog(
             user_id=user_id,
             action=action[:100],
@@ -56,11 +65,16 @@ def _persist_audit_record(
 
 def log_audit(
     action: AuditAction,
-    user_id: int = None,
-    details: str = None,
-    ip_address: str = None,
+    user_id: int | None = None,
+    details: str | None = None,
+    ip_address: str | None = None,
     success: bool = True
 ) -> None:
+    """
+    Логирование критичных действий без чувствительных данных.
+    
+    ВАЖНО: Никогда не логируем пароли, токены, полные номера счетов.
+    """
     log_message = f"[AUDIT] Action: {action.value}"
     
     if user_id:
@@ -68,6 +82,7 @@ def log_audit(
     if ip_address:
         log_message += f" | IP: {ip_address}"
     if details:
+        # Убедитесь, что details не содержит чувствительных данных
         log_message += f" | Details: {details}"
     
     log_message += f" | Success: {success}"
@@ -88,11 +103,12 @@ def log_audit(
 
 def log_security_event(
     event_type: str,
-    user_id: int = None,
-    reason: str = None,
+    user_id: int | None = None,
+    reason: str | None = None,
     severity: str = "WARNING",
-    ip_address: str = None
+    ip_address: str | None = None
 ) -> None:
+    """Логирование событий безопасности"""
     log_message = f"[SECURITY] Event: {event_type}"
     
     if user_id:
