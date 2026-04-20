@@ -277,7 +277,7 @@ External Entity:      Process:                External Entity:
 │     ├─ SELECT * FROM users WHERE id = {user_id}                │
 │     │  (Parameterized query - safe!)                            │
 │     ├─ Check user.is_active == True                             │
-│     └─ Return: User(id=2, username="customer1", role="customer")│
+│     └─ Return: User(id=2, username="current_user", role="customer")│
 │                                                                  │
 │  3. Route handler: get_invoice(invoice_id, current_user, db)   │
 │     ├─ SELECT * FROM invoices WHERE id = {invoice_id}          │

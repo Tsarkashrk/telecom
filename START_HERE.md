@@ -124,8 +124,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 curl -X POST "http://localhost:8000/api/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "customer1",
-    "password": "Customer@123456789"
+    "username": "your_username",
+    "password": "your_password"
   }'
 ```
 
@@ -147,14 +147,9 @@ curl -X GET "http://localhost:8000/api/billing/invoices" \
 
 ---
 
-## 👥 ТЕСТОВЫЕ УЧЕТНЫЕ ДАННЫЕ
+## 👥 УЧЕТНЫЕ ДАННЫЕ
 
-| Роль          | Username  | Password           | Email                  |
-| ------------- | --------- | ------------------ | ---------------------- |
-| 🔧 Admin      | admin     | Admin@1234567890   | admin@telecom.local    |
-| 👨‍💼 Operator   | operator  | Operator@123456789 | operator@telecom.local |
-| 👤 Customer 1 | customer1 | Customer@123456789 | customer1@example.com  |
-| 👤 Customer 2 | customer2 | Customer@123456789 | customer2@example.com  |
+Используйте учетные записи, которые уже существуют в вашей текущей базе данных.
 
 ---
 

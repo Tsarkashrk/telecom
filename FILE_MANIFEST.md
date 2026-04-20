@@ -374,11 +374,9 @@ pip-audit                        # SCA анализ
 - http://localhost:8000/redoc - ReDoc
 - http://localhost:8000/health - Health check
 
-### Тестовые учетные данные
+### Учетные данные
 
-- admin / Admin@1234567890
-- customer1 / Customer@123456789
-- customer2 / Customer@123456789
+- Используются учетные записи, уже присутствующие в текущей базе данных
 
 ---
 

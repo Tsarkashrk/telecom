@@ -53,11 +53,13 @@ CREATE DATABASE telecom_db;
 \q
 ```
 
-### 5. Инициализация таблиц и тестовых данных
+### 5. Инициализация схемы БД
 
 ```bash
 python init_db.py
 ```
+
+`init_db.py` создает только таблицы и не добавляет пользователей по умолчанию.
 
 ## 🚀 Запуск
 
@@ -68,32 +70,6 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 API будет доступен на `http://localhost:8000`
 
 Документация Swagger: `http://localhost:8000/docs`
-
-## 🔐 Тестовые учетные данные
-
-### Администратор
-
-- Username: `admin`
-- Password: `Admin@1234567890`
-- Email: `admin@telecom.local`
-
-### Оператор
-
-- Username: `operator`
-- Password: `Operator@123456789`
-- Email: `operator@telecom.local`
-
-### Клиент 1
-
-- Username: `customer1`
-- Password: `Customer@123456789`
-- Email: `customer1@example.com`
-
-### Клиент 2
-
-- Username: `customer2`
-- Password: `Customer@123456789`
-- Email: `customer2@example.com`
 
 ## 📚 API Эндпоинты
 
@@ -112,8 +88,8 @@ POST /api/auth/register
 # Вход
 POST /api/auth/login
 {
-  "username": "customer1",
-  "password": "Customer@123456789"
+  "username": "your_username",
+  "password": "your_password"
 }
 
 # Получить текущего пользователя

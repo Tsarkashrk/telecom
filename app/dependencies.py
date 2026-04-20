@@ -1,6 +1,9 @@
-from fastapi import Depends, HTTPException, status
+import secrets
+
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.database import get_db
 from app.security import verify_token
 from app.models import User
@@ -93,3 +96,28 @@ async def verify_object_access(
         return True
     
     return False
+
+
+async def get_internal_service(
+    x_internal_api_key: Optional[str] = Header(None, alias="X-Internal-API-Key")
+) -> str:
+    """
+    Доступ к внутренним billing endpoint.
+    Предназначен только для service-to-service вызовов.
+    """
+    if not settings.internal_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Внутренний API недоступен"
+        )
+
+    if x_internal_api_key is None or not secrets.compare_digest(
+        x_internal_api_key,
+        settings.internal_api_key
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Доступ запрещен"
+        )
+
+    return "billing-service"

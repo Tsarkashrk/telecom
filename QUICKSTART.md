@@ -91,14 +91,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 - 🔍 **ReDoc**: http://localhost:8000/redoc
 - 💚 **Health check**: http://localhost:8000/health
 
-## Тестовые учетные данные
+## Учетные данные
 
-| Роль       | Username  | Password           | Email                  |
-| ---------- | --------- | ------------------ | ---------------------- |
-| Admin      | admin     | Admin@1234567890   | admin@telecom.local    |
-| Operator   | operator  | Operator@123456789 | operator@telecom.local |
-| Customer 1 | customer1 | Customer@123456789 | customer1@example.com  |
-| Customer 2 | customer2 | Customer@123456789 | customer2@example.com  |
+Используйте учетные данные, созданные в вашей текущей базе данных.
 
 ## Первый запрос (cURL)
 
@@ -108,8 +103,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 curl -X POST "http://localhost:8000/api/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "customer1",
-    "password": "Customer@123456789"
+    "username": "your_username",
+    "password": "your_password"
   }'
 ```
 

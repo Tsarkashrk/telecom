@@ -1,6 +1,3 @@
-"""
-Тесты для MVP системы.
-"""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -11,7 +8,6 @@ from app.database import get_db
 from app.models import Base, User, TariffPlan
 from app.security import hash_password
 
-# Используем in-memory SQLite для тестов
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
 engine = create_engine(
@@ -39,7 +35,6 @@ def setup_test_data():
     """Создание тестовых данных"""
     db = TestingSessionLocal()
     
-    # Создание тестового пользователя
     test_user = User(
         username="testuser",
         email="test@example.com",
@@ -50,7 +45,6 @@ def setup_test_data():
     )
     db.add(test_user)
     
-    # Создание админа
     admin_user = User(
         username="admin",
         email="admin@example.com",
@@ -61,7 +55,6 @@ def setup_test_data():
     )
     db.add(admin_user)
     
-    # Создание тарифного плана
     tariff = TariffPlan(
         name="Test Tariff",
         monthly_price=99.99,
@@ -146,7 +139,6 @@ class TestAuth:
     
     def test_get_current_user(self):
         """Тест получения информации о текущем пользователе"""
-        # Сначала логинимся
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -156,7 +148,6 @@ class TestAuth:
         )
         token = login_response.json()["access_token"]
         
-        # Получаем информацию о пользователе
         response = client.get(
             "/api/auth/me",
             headers={"Authorization": f"Bearer {token}"}
@@ -185,7 +176,6 @@ class TestSubscriptions:
     
     def test_activate_tariff_success(self):
         """Тест активации тарифа"""
-        # Логинимся
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -195,7 +185,6 @@ class TestSubscriptions:
         )
         token = login_response.json()["access_token"]
         
-        # Активируем тариф
         response = client.post(
             "/api/subscriptions/activate",
             json={"tariff_id": 1},
@@ -206,7 +195,6 @@ class TestSubscriptions:
     
     def test_get_subscriptions(self):
         """Тест получения подписок пользователя"""
-        # Логинимся
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -216,7 +204,6 @@ class TestSubscriptions:
         )
         token = login_response.json()["access_token"]
         
-        # Получаем подписки
         response = client.get(
             "/api/subscriptions",
             headers={"Authorization": f"Bearer {token}"}
@@ -230,7 +217,6 @@ class TestInvoices:
     
     def test_get_invoices(self):
         """Тест получения счетов"""
-        # Логинимся
         login_response = client.post(
             "/api/auth/login",
             json={
@@ -240,7 +226,6 @@ class TestInvoices:
         )
         token = login_response.json()["access_token"]
         
-        # Получаем счета
         response = client.get(
             "/api/billing/invoices",
             headers={"Authorization": f"Bearer {token}"}
@@ -262,7 +247,7 @@ class TestValidation:
         response = client.post(
             "/api/auth/register",
             json={
-                "username": "user@name",  # @ не разрешен
+                "username": "user@name",
                 "email": "user@example.com",
                 "phone": "+7-999-000-0001",
                 "password": "Password@123"
@@ -291,7 +276,7 @@ class TestValidation:
                 "username": "testuser",
                 "email": "user@example.com",
                 "phone": "+7-999-000-0001",
-                "password": "weak"  # Слишком короткий и без требуемых символов
+                "password": "weak" 
             }
         )
         assert response.status_code == 422
@@ -301,7 +286,7 @@ class TestValidation:
         response = client.post(
             "/api/auth/register",
             json={
-                "username": "ab",  # Меньше 3
+                "username": "ab", 
                 "email": "user@example.com",
                 "phone": "+7-999-000-0001",
                 "password": "Password@123"

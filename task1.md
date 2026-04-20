@@ -23,6 +23,7 @@
 - [app/routers/auth.py](/Users/tsarevich/web/telecom/app/routers/auth.py:1) — регистрация, вход, refresh, logout, `me`.
 - [app/routers/subscriptions.py](/Users/tsarevich/web/telecom/app/routers/subscriptions.py:1) — тарифы и подписки.
 - [app/routers/invoices.py](/Users/tsarevich/web/telecom/app/routers/invoices.py:1) — счета, статус счета, оплата счета.
+- [app/routers/internal_billing.py](/Users/tsarevich/web/telecom/app/routers/internal_billing.py:1) — внутренний billing API для генерации следующего счета по активной подписке.
 
 ### 1.2. Анализируемые API-эндпоинты
 
@@ -49,6 +50,10 @@
 - `GET /api/billing/invoices/{invoice_id}/status`
 - `POST /api/billing/invoices/{invoice_id}/pay`
 - `GET /api/billing/invoices/user/{user_id}`
+
+#### Внутренний API
+
+- `POST /api/internal/billing/subscriptions/{subscription_id}/generate-invoice`
 
 ### 1.3. Внешние зависимости
 
@@ -83,6 +88,7 @@
 - Подписки и статусы подключения услуги.
 - Счета и статусы оплаты.
 - JWT access и refresh tokens.
+- Внутренний `INTERNAL_API_KEY`.
 - Журнал аудита `audit_logs`.
 
 ### 2.2. Чувствительные данные
@@ -98,12 +104,14 @@
 - `customer` — клиент, видит только собственные данные и оплачивает свои счета.
 - `operator` — сотрудник поддержки, имеет read-only доступ к счетам и подпискам клиентов.
 - `admin` — расширенный служебный доступ.
+- `internal billing service` — технический сервис, который генерирует очередные счета по активным подпискам.
 
 ### 2.4. Границы доверия
 
 - Внешний клиент ↔ HTTP API.
 - HTTP API ↔ JWT/Bearer authentication layer.
 - HTTP API ↔ База данных PostgreSQL.
+- Internal billing service ↔ internal billing API.
 - Приложение ↔ журналирование и аудит в БД.
 
 ### 2.5. Вероятные угрозы
@@ -116,6 +124,7 @@
 - Утечки ПДн через API или логи.
 - Повышение привилегий.
 - Неверная модель активации тарифа без оплаты.
+- Несанкционированный вызов внутреннего billing API.
 
 ---
 
@@ -128,10 +137,12 @@ flowchart TD
     Client["Client / Swagger / Postman"]
     Operator["Operator"]
     Admin["Admin"]
+    Internal["Internal Billing Service"]
     subgraph API["FastAPI Application"]
         Auth["Auth Router"]
         Subs["Subscriptions Router"]
         Bill["Invoices Router"]
+        InternalAPI["Internal Billing Router"]
         Deps["Dependencies & Security"]
         Audit["Logging & Audit"]
     end
@@ -145,17 +156,21 @@ flowchart TD
     Operator --> Subs
     Admin --> Bill
     Admin --> Subs
+    Internal --> InternalAPI
     Auth --> Deps
     Subs --> Deps
     Bill --> Deps
+    InternalAPI --> Deps
 
     Auth --> DB
     Subs --> DB
     Bill --> DB
+    InternalAPI --> DB
 
     Auth --> Audit
     Subs --> Audit
     Bill --> Audit
+    InternalAPI --> Audit
     Audit --> DB
 ```
 
@@ -167,17 +182,31 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Customer: POST /api/subscriptions/activate"] --> B["Проверка Bearer token"]
-    B --> C["Проверка существования тарифа"]
-    C --> D["Создание Subscription(status=pending_payment, is_active=false)"]
-    D --> E["Создание Invoice(status=pending)"]
-    E --> F["Клиент получает счет на оплату"]
-    F --> G["POST /api/billing/invoices/{id}/pay"]
-    G --> H["Проверка доступа к счету"]
-    H --> I["Invoice.status = paid"]
-    I --> J["Subscription.status = active; is_active = true"]
-    J --> K["Аудит оплаты и активации"]
-    K --> L["Клиент получает активную подписку"]
+    A["Клиент отправляет POST /api/subscriptions/activate"] --> B["Извлечение Bearer token"]
+    B --> C{"Токен валиден?"}
+    C -- "Нет" --> C1["401 Unauthorized"]
+    C -- "Да" --> D["Проверка существования тарифа"]
+    D --> E{"Тариф найден и активен?"}
+    E -- "Нет" --> E1["404 Тариф не найден"]
+    E -- "Да" --> F["Проверка текущих подписок пользователя"]
+    F --> G{"Есть active или pending_payment подписка?"}
+    G -- "Да" --> G1["400 Новая подписка запрещена"]
+    G -- "Нет" --> H["Создать Subscription(status=pending_payment, is_active=false)"]
+    H --> I["Создать Invoice(status=pending)"]
+    I --> J["Записать аудит создания счета"]
+    J --> K["Вернуть клиенту pending подписку и счет на оплату"]
+    K --> L["Клиент отправляет POST /api/billing/invoices/{id}/pay"]
+    L --> M["Проверка Bearer token и владельца счета"]
+    M --> N{"Доступ к счету разрешен?"}
+    N -- "Нет" --> N1["403 Forbidden"]
+    N -- "Да" --> O["Проверка статуса счета"]
+    O --> P{"Счет уже paid или overdue?"}
+    P -- "Да" --> P1["400 Оплата отклонена"]
+    P -- "Нет" --> Q["Invoice.status = paid"]
+    Q --> R["Subscription.status = active; is_active = true"]
+    R --> S["Обновить next_billing_date"]
+    S --> T["Записать аудит оплаты и активации"]
+    T --> U["Клиент получает активную подписку"]
 ```
 
 ---
@@ -207,6 +236,7 @@ flowchart TD
 - Поиск пользователя по username: [app/routers/auth.py](/Users/tsarevich/web/telecom/app/routers/auth.py:158)
 - Создание подписки и счета: [app/routers/subscriptions.py](/Users/tsarevich/web/telecom/app/routers/subscriptions.py:85)
 - Оплата счета и активация подписки: [app/routers/invoices.py](/Users/tsarevich/web/telecom/app/routers/invoices.py:192)
+- Генерация следующего счета внутренним сервисом: [app/routers/internal_billing.py](/Users/tsarevich/web/telecom/app/routers/internal_billing.py:16)
 - Аудит в таблицу `audit_logs`: [app/logging_config.py](/Users/tsarevich/web/telecom/app/logging_config.py:28)
 
 ### 4.4. Токены, пароли и секреты
@@ -215,7 +245,7 @@ flowchart TD
 - JWT access token: [app/security.py](/Users/tsarevich/web/telecom/app/security.py:21)
 - JWT refresh token: [app/security.py](/Users/tsarevich/web/telecom/app/security.py:43)
 - Проверка JWT: [app/security.py](/Users/tsarevich/web/telecom/app/security.py:58)
-- `SECRET_KEY`: [app/config.py](/Users/tsarevich/web/telecom/app/config.py:5), [.env.example](/Users/tsarevich/web/telecom/.env.example:1)
+- `SECRET_KEY` и `INTERNAL_API_KEY`: [app/config.py](/Users/tsarevich/web/telecom/app/config.py:5), [.env.example](/Users/tsarevich/web/telecom/.env.example:1)
 
 ---
 
@@ -290,6 +320,7 @@ HTTP Request
 - Проверка роли выполняется на серверной стороне.
 - Реализована object-level authorization для счетов и подписок.
 - Роль `operator` выделена в read-only сценарии поддержки.
+- Внутренний billing API отделен от пользовательского API и защищен отдельным ключом.
 **Статус:** в основном соответствует.
 
 ### 6.3. Валидация
@@ -342,7 +373,8 @@ HTTP Request
 | 5 | `app/routers/auth.py` | отсутствовали `refresh` и `logout` | Неполная реализация auth lifecycle | Средний | Невозможно корректно показать работу refresh/logout в MVP | Средняя | Добавлены `POST /api/auth/refresh` и `POST /api/auth/logout` | Устранено |
 | 6 | `app/models.py`, `app/logging_config.py` | `AuditLog` был не использован | Неполный аудит | Средний | Критичные действия не сохранялись в БД как артефакт безопасности | Средняя | Добавлено сохранение audit/security events в `audit_logs` | Устранено |
 | 7 | `app/routers/subscriptions.py`, `app/routers/invoices.py` | бизнес-логика подписки | Некорректная модель активации тарифа | Средний | Неоплаченный тариф мог оставаться активным | Средняя | Введена предоплата: `pending_payment` → оплата счета → `active` | Устранено |
-| 8 | `app/routers/auth.py` | brute-force хранится в памяти процесса | Ограниченная устойчивость защитного механизма | Низкий | После рестарта блокировки теряются, в нескольких инстансах защита не синхронизирована | Низкая | Вынести rate limit в Redis / reverse proxy | Не устранено |
+| 8 | `app/routers/internal_billing.py`, `app/dependencies.py` | внутренний billing API | Недостаточная изоляция внутреннего API | Средний | Служебная генерация счета могла быть смешана с пользовательскими ролями | Средняя | Выделен internal router и защита по `X-Internal-API-Key` | Устранено |
+| 9 | `app/routers/auth.py` | brute-force хранится в памяти процесса | Ограниченная устойчивость защитного механизма | Низкий | После рестарта блокировки теряются, в нескольких инстансах защита не синхронизирована | Низкая | Вынести rate limit в Redis / reverse proxy | Не устранено |
 
 ### Комментарий к текущему состоянию
 
@@ -361,12 +393,13 @@ HTTP Request
 - Сохранить object-level authorization для всех ресурсов с `user_id`.
 - Для `customer`, `operator`, `admin` держать отдельные серверные правила доступа.
 - Не активировать подписку до оплаты первого счета.
+- Для внутренних billing-операций использовать отдельный internal endpoint и service credential, а не JWT пользователя.
 - Продолжить писать аудит в БД и в обычный лог.
 
 ### 8.2. Рекомендации по конфигурации
 
 - Убрать дефолтные секреты из исходного кода.
-- Требовать `SECRET_KEY` и `DATABASE_URL` из `.env`.
+- Требовать `SECRET_KEY`, `DATABASE_URL`, `INTERNAL_API_KEY` из `.env`.
 - Не использовать для БД superuser-учетную запись в production.
 - Разделить права пользователя БД для приложения и административных задач.
 
