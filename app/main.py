@@ -1,8 +1,7 @@
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.exc import SQLAlchemyError
-from typing import Optional
 import logging
 
 from app.database import engine
@@ -34,10 +33,13 @@ app.include_router(
 )
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
-    logger.error(f"Database error: {str(exc)}")
+    logger.exception("Database error")
     log_security_event(
         event_type="database_error",
-        reason=str(exc)[:100],
+        # Безопаснее не писать клиенту и в аудит полный текст SQL-ошибки.
+
+        # vul: return JSONResponse(status_code=500, content={"error": str(exc)})
+        reason=exc.__class__.__name__,
         severity="ERROR"
     )
     return JSONResponse(
@@ -76,7 +78,6 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# vul: if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000)

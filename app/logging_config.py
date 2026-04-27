@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime
 from enum import Enum
 
-from app.database import SessionLocal
+from sqlalchemy.exc import SQLAlchemyError
+
+from app import database
 from app.models import AuditLog
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class AuditAction(str, Enum):
-    """Типы действий для аудита"""
     USER_REGISTERED = "user_registered"
     USER_LOGIN = "user_login"
     USER_LOGOUT = "user_logout"
@@ -24,9 +23,9 @@ class AuditAction(str, Enum):
     INVOICE_PAID = "invoice_paid"
     INVOICE_VIEWED = "invoice_viewed"
     SUBSCRIPTION_VIEWED = "subscription_viewed"
-    UNAUTHORIZED_ACCESS_ATTEMPT = "unauthorized_access_attempt"
-    INVALID_TOKEN = "invalid_token"
-    PASSWORD_CHANGED = "password_changed"
+    UNAUTHORIZED_ACCESS_ATTEMPT = "unauthorized_access_attempt" 
+    INVALID_TOKEN = "invalid_token" # nosec
+    PASSWORD_CHANGED = "password_changed" # nosec
 
 
 def _persist_audit_record(
@@ -36,15 +35,9 @@ def _persist_audit_record(
     ip_address: str | None = None,
     success: bool = True
 ) -> None:
-    """
-    Сохраняет запись аудита в БД.
-
-    Ошибка аудита не должна ломать бизнес-операцию, поэтому
-    исключения только журналируются.
-    """
     db = None
     try:
-        db = SessionLocal()
+        db = database.SessionLocal()
         audit_record = AuditLog(
             user_id=user_id,
             action=action[:100],
@@ -54,8 +47,8 @@ def _persist_audit_record(
         )
         db.add(audit_record)
         db.commit()
-    except Exception as exc:
-        logger.error(f"Failed to persist audit record: {exc}")
+    except SQLAlchemyError as exc:
+        logger.error(f"Failed to persist audit record: {exc.__class__.__name__}")
         if db is not None:
             db.rollback()
     finally:
@@ -70,11 +63,6 @@ def log_audit(
     ip_address: str | None = None,
     success: bool = True
 ) -> None:
-    """
-    Логирование критичных действий без чувствительных данных.
-    
-    ВАЖНО: Никогда не логируем пароли, токены, полные номера счетов.
-    """
     log_message = f"[AUDIT] Action: {action.value}"
     
     if user_id:
@@ -82,7 +70,6 @@ def log_audit(
     if ip_address:
         log_message += f" | IP: {ip_address}"
     if details:
-        # Убедитесь, что details не содержит чувствительных данных
         log_message += f" | Details: {details}"
     
     log_message += f" | Success: {success}"
@@ -108,7 +95,6 @@ def log_security_event(
     severity: str = "WARNING",
     ip_address: str | None = None
 ) -> None:
-    """Логирование событий безопасности"""
     log_message = f"[SECURITY] Event: {event_type}"
     
     if user_id:

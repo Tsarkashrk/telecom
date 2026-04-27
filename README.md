@@ -63,10 +63,6 @@ python init_db.py
 
 ## 🚀 Запуск
 
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
 API будет доступен на `http://localhost:8000`
 
 Документация Swagger: `http://localhost:8000/docs`

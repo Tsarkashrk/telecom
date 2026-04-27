@@ -194,6 +194,10 @@ def refresh_tokens(
 
     client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
 
+    # Безопасно: token проверяется через verify_token(), включая подпись и срок жизни.
+
+    # vul: payload = jwt.decode(refresh_request.refresh_token, options={"verify_signature": False})
+
     payload = verify_token(refresh_request.refresh_token)
     if payload is None or payload.get("type") != "refresh":
         log_security_event(

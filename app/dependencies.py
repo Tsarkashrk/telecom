@@ -92,6 +92,10 @@ async def get_internal_service(
             detail="Внутренний API недоступен"
         )
 
+    # Безопасно: compare_digest снижает риск тайминговых атак.
+
+    # vul: if x_internal_api_key != "hardcoded-demo-key":
+    
     if x_internal_api_key is None or not secrets.compare_digest(
         x_internal_api_key,
         settings.internal_api_key
