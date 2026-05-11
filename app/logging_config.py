@@ -1,18 +1,55 @@
 import logging
 from enum import Enum
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import database
+from app.config import settings
 from app.input_security import sanitize_log_value
 from app.models import AuditLog
 
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format=LOG_FORMAT
 )
 
 logger = logging.getLogger(__name__)
+audit_logger = logging.getLogger("app.audit")
+
+
+def configure_audit_logging(log_file_path: str | None = None) -> logging.Logger:
+    target_path = Path(log_file_path or settings.audit_log_file).expanduser()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_target = target_path.resolve()
+
+    for handler in list(audit_logger.handlers):
+        if isinstance(handler, RotatingFileHandler):
+            current_path = Path(handler.baseFilename).resolve()
+            if current_path == resolved_target:
+                return audit_logger
+            audit_logger.removeHandler(handler)
+            handler.close()
+
+    file_handler = RotatingFileHandler(
+        resolved_target,
+        maxBytes=settings.audit_log_max_bytes,
+        backupCount=settings.audit_log_backup_count,
+        encoding="utf-8"
+    )
+    file_handler.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+    audit_logger.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    audit_logger.addHandler(file_handler)
+    audit_logger.propagate = True
+    return audit_logger
+
+
+configure_audit_logging()
 
 
 class AuditAction(str, Enum):
@@ -81,9 +118,9 @@ def log_audit(
     log_message += f" | Success: {success}"
     
     if success:
-        logger.info(log_message)
+        audit_logger.info(log_message)
     else:
-        logger.warning(log_message)
+        audit_logger.warning(log_message)
 
     _persist_audit_record(
         action=action.value,
@@ -114,11 +151,11 @@ def log_security_event(
         log_message += f" | Reason: {sanitized_reason}"
     
     if severity == "CRITICAL":
-        logger.critical(log_message)
+        audit_logger.critical(log_message)
     elif severity == "ERROR":
-        logger.error(log_message)
+        audit_logger.error(log_message)
     else:
-        logger.warning(log_message)
+        audit_logger.warning(log_message)
 
     _persist_audit_record(
         action=f"security:{sanitized_event_type}",

@@ -207,6 +207,26 @@ class TestAuth:
         assert response.status_code == 200
         assert "access_token" in response.json()
         assert "refresh_token" in response.json()
+
+    def test_login_writes_audit_record_to_file(self, tmp_path):
+        log_path = tmp_path / "audit.log"
+        logging_config_module.configure_audit_logging(str(log_path))
+
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "username": "testuser",
+                "password": "TestPassword@123"
+            }
+        )
+
+        assert response.status_code == 200
+        assert log_path.exists()
+
+        log_contents = log_path.read_text(encoding="utf-8")
+        assert "[AUDIT] Action: user_login" in log_contents
+        assert "User ID:" in log_contents
+        assert "Success: True" in log_contents
     
     def test_login_invalid_password(self):
         response = client.post(

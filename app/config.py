@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     max_page_size: int = 100
     export_dir: str = "exports"
     log_level: str = "INFO"
+    audit_log_file: str = "logs/audit.log"
+    audit_log_max_bytes: int = 1048576
+    audit_log_backup_count: int = 5
     debug: bool = False
     
     class Config:
