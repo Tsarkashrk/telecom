@@ -3,13 +3,83 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.exc import SQLAlchemyError
 import logging
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.database import engine
 from app.models import Base
 from app.routers import auth, subscriptions, invoices, internal_billing
+from app.config import settings
 from app.logging_config import log_security_event
 
 logger = logging.getLogger(__name__)
+
+
+class RequestSizeLimitMiddleware:
+    def __init__(self, app: ASGIApp, max_body_size: int):
+        self.app = app
+        self.max_body_size = max_body_size
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {
+            key.decode("latin-1"): value.decode("latin-1")
+            for key, value in scope.get("headers", [])
+        }
+        content_length = headers.get("content-length")
+
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_body_size:
+                    await self._send_413(scope, send)
+                    return
+            except ValueError:
+                await self._send_400(scope, send)
+                return
+
+        received = 0
+
+        async def limited_receive() -> Message:
+            nonlocal received
+            message = await receive()
+
+            if message["type"] != "http.request":
+                return message
+
+            body = message.get("body", b"")
+            received += len(body)
+            if received > self.max_body_size:
+                raise RequestSizeExceededError
+
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except RequestSizeExceededError:
+            await self._send_413(scope, send)
+
+    async def _send_400(self, scope: Scope, send: Send) -> None:
+        response = JSONResponse(
+            status_code=400,
+            content={"error": "Некорректный заголовок Content-Length"},
+        )
+        await response(scope, self._empty_receive, send)
+
+    async def _send_413(self, scope: Scope, send: Send) -> None:
+        response = JSONResponse(
+            status_code=413,
+            content={"error": "Размер запроса превышает допустимый предел"},
+        )
+        await response(scope, self._empty_receive, send)
+
+    async def _empty_receive(self) -> Message:
+        return {"type": "http.disconnect"}
+
+
+class RequestSizeExceededError(Exception):
+    pass
 
 
 @asynccontextmanager
@@ -22,6 +92,10 @@ app = FastAPI(
     description="Система регистрации клиентов и биллинга с аутентификацией и авторизацией",
     version="1.0.0",
     lifespan=lifespan
+)
+app.add_middleware(
+    RequestSizeLimitMiddleware,
+    max_body_size=settings.max_request_size_bytes
 )
 app.include_router(auth.router, prefix="/api/auth", tags=["Аутентификация"])
 app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Подписки"])

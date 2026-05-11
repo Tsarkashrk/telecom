@@ -1,16 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from app.database import get_db
+from app.config import settings
+from app.input_security import extract_client_ip
 from app.models import User, Subscription, TariffPlan, Invoice
 from app.schemas import (
     SubscriptionResponse, ActivateTariffRequest,
     TariffPlanResponse, InvoiceResponse, ErrorResponse
 )
-from app.dependencies import get_current_user, get_current_operator, verify_object_access
+from app.dependencies import (
+    ensure_subscription_access,
+    get_current_operator,
+    get_current_user,
+)
 from app.logging_config import log_audit, log_security_event, AuditAction
 
 router = APIRouter()
@@ -18,7 +24,13 @@ router = APIRouter()
 
 @router.get("/tariffs", response_model=List[TariffPlanResponse])
 def get_available_tariffs(db: Session = Depends(get_db)):
-    tariffs = db.query(TariffPlan).filter(TariffPlan.is_active == True).all()
+    tariffs = (
+        db.query(TariffPlan)
+        .filter(TariffPlan.is_active == True)
+        .order_by(TariffPlan.id)
+        .limit(settings.max_page_size)
+        .all()
+    )
     return tariffs
 
 
@@ -29,7 +41,7 @@ def activate_tariff(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+    client_ip = extract_client_ip(x_forwarded_for)
     tariff = db.query(TariffPlan).filter(
         and_(TariffPlan.id == request.tariff_id, TariffPlan.is_active == True)
     ).first()
@@ -101,11 +113,18 @@ def activate_tariff(
 @router.get("", response_model=List[SubscriptionResponse])
 def get_user_subscriptions(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    limit: int = Query(settings.default_page_size, ge=1, le=settings.max_page_size),
+    offset: int = Query(0, ge=0),
 ):
-    subscriptions = db.query(Subscription).filter(
-        Subscription.user_id == current_user.id
-    ).all()
+    subscriptions = (
+        db.query(Subscription)
+        .filter(Subscription.user_id == current_user.id)
+        .order_by(Subscription.id)
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
     for sub in subscriptions:
         tariff: TariffPlan | None = db.get(TariffPlan, sub.tariff_id)
 
@@ -122,7 +141,9 @@ def get_subscription(
     subscription_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    x_forwarded_for: Optional[str] = Header(None),
 ):
+    client_ip = extract_client_ip(x_forwarded_for)
     subscription: Subscription | None = (
         db.query(Subscription)
         .filter(Subscription.id == subscription_id)
@@ -135,20 +156,7 @@ def get_subscription(
             detail="Подписка не найдена",
         )
 
-    if not (
-        current_user.id == subscription.user_id
-        or current_user.role in ["operator", "admin"]
-    ):
-        log_security_event(
-            event_type="unauthorized_access_attempt",
-            user_id=current_user.id,
-            reason=f"Attempted access to subscription {subscription_id}",
-            severity="WARNING",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещен",
-        )
+    ensure_subscription_access(subscription, current_user, client_ip)
 
     tariff: TariffPlan | None = db.get(TariffPlan, subscription.tariff_id)
 
@@ -168,21 +176,27 @@ def get_user_subscriptions_for_operator(
     user_id: int,
     current_user: User = Depends(get_current_operator),
     db: Session = Depends(get_db),
-    x_forwarded_for: Optional[str] = Header(None)
+    x_forwarded_for: Optional[str] = Header(None),
+    limit: int = Query(settings.default_page_size, ge=1, le=settings.max_page_size),
+    offset: int = Query(0, ge=0),
 ):
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+    client_ip = extract_client_ip(x_forwarded_for)
 
-    subscriptions = db.query(Subscription).filter(
-        Subscription.user_id == user_id
-    ).all()
+    subscriptions = (
+        db.query(Subscription)
+        .filter(Subscription.user_id == user_id)
+        .order_by(Subscription.id)
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
 
     for sub in subscriptions:
         tariff: TariffPlan | None = db.get(TariffPlan, sub.tariff_id)
+        if tariff is None:
+            raise HTTPException(status_code=404, detail="Tariff not found")
 
-    if tariff is None:
-        raise HTTPException(status_code=404, detail="Tariff not found")
-
-    sub.tariff_plan = tariff
+        sub.tariff_plan = tariff
 
     log_audit(
         action=AuditAction.SUBSCRIPTION_VIEWED,

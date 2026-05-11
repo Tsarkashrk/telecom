@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+    max_request_size_bytes: int = 65536
+    default_page_size: int = 50
+    max_page_size: int = 100
+    export_dir: str = "exports"
     log_level: str = "INFO"
     debug: bool = False
     

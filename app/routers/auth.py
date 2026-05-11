@@ -16,7 +16,8 @@ from app.security import (
     create_refresh_token,
     verify_token,
 )
-from app.dependencies import get_current_user, verify_object_access
+from app.dependencies import get_current_user
+from app.input_security import extract_client_ip
 from app.logging_config import log_audit, log_security_event, AuditAction
 
 router = APIRouter()
@@ -59,8 +60,7 @@ def register_user(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+    client_ip = extract_client_ip(x_forwarded_for)
     
     existing_user = db.query(User).filter(User.username == user_data.username).first()
     if existing_user:
@@ -122,8 +122,7 @@ def login_user(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+    client_ip = extract_client_ip(x_forwarded_for)
     
     if not check_login_attempts(credentials.username):
         log_security_event(
@@ -165,7 +164,10 @@ def login_user(
     record_login_attempt(credentials.username, True)
     
     access_token = create_access_token(data={"sub": user.id})
-    refresh_token = create_refresh_token(data={"sub": user.id})
+    refresh_token = create_refresh_token(
+        data={"sub": user.id},
+        token_version=user.refresh_token_version
+    )
     
     log_audit(
         action=AuditAction.USER_LOGIN,
@@ -191,15 +193,14 @@ def refresh_tokens(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+    client_ip = extract_client_ip(x_forwarded_for)
 
     # Безопасно: token проверяется через verify_token(), включая подпись и срок жизни.
 
     # vul: payload = jwt.decode(refresh_request.refresh_token, options={"verify_signature": False})
 
-    payload = verify_token(refresh_request.refresh_token)
-    if payload is None or payload.get("type") != "refresh":
+    payload = verify_token(refresh_request.refresh_token, expected_type="refresh")
+    if payload is None:
         log_security_event(
             event_type="invalid_refresh_token",
             reason="Invalid or expired refresh token",
@@ -217,15 +218,42 @@ def refresh_tokens(
             detail="Неверные учетные данные"
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверные учетные данные"
+        )
+
+    user = db.query(User).filter(User.id == user_id_int).first()
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверные учетные данные"
         )
 
+    refresh_token_version = payload.get("rtv")
+    if refresh_token_version != user.refresh_token_version:
+        log_security_event(
+            event_type="stale_refresh_token",
+            user_id=user.id,
+            reason="Refresh token rotation version mismatch",
+            severity="WARNING",
+            ip_address=client_ip,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверные учетные данные"
+        )
+
     access_token = create_access_token(data={"sub": user.id})
-    new_refresh_token = create_refresh_token(data={"sub": user.id})
+    user.refresh_token_version += 1
+    new_refresh_token = create_refresh_token(
+        data={"sub": user.id},
+        token_version=user.refresh_token_version
+    )
+    db.commit()
 
     log_audit(
         action=AuditAction.USER_LOGIN,
@@ -244,10 +272,12 @@ def refresh_tokens(
 @router.post("/logout", response_model=dict)
 def logout_user(
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "unknown"
+    client_ip = extract_client_ip(x_forwarded_for)
+    current_user.refresh_token_version += 1
+    db.commit()
 
     log_audit(
         action=AuditAction.USER_LOGOUT,

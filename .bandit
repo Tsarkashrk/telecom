@@ -1,0 +1,2 @@
+[bandit]
+exclude_dirs = venv,tests,.pytest_cache,.mypy_cache,.venv

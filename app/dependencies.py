@@ -1,4 +1,5 @@
 import secrets
+from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -6,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.security import verify_token
-from app.models import User
-from typing import Optional
+from app.logging_config import AuditAction, log_audit, log_security_event
+from app.models import Invoice, Subscription, User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -26,7 +27,7 @@ async def get_current_user(
         raise credentials_exception
 
     token = credentials.credentials
-    payload = verify_token(token)
+    payload = verify_token(token, expected_type="access")
     if payload is None:
         raise credentials_exception
 
@@ -76,11 +77,84 @@ async def verify_object_access(
 ) -> bool:
     if current_user.role == "admin":
         return True
-    
+
     if current_user.id == resource_owner_id:
         return True
-    
+
     return False
+
+
+def ensure_resource_access(
+    *,
+    resource_owner_id: int,
+    current_user: User,
+    resource_type: str,
+    resource_id: int,
+    action: str = "access",
+    privileged_roles: set[str] | None = None,
+    client_ip: str | None = None,
+) -> None:
+    allowed_roles = privileged_roles or {"admin"}
+    if current_user.id == resource_owner_id or current_user.role in allowed_roles:
+        return
+
+    event_suffix = "payment_attempt" if action == "pay" else action
+    log_security_event(
+        event_type=f"unauthorized_{resource_type}_{event_suffix}",
+        user_id=current_user.id,
+        reason=(
+            f"Attempted to {action} {resource_type} {resource_id} "
+            f"owned by user {resource_owner_id}"
+        ),
+        severity="WARNING",
+        ip_address=client_ip,
+    )
+    log_audit(
+        action=AuditAction.UNAUTHORIZED_ACCESS_ATTEMPT,
+        user_id=current_user.id,
+        details=f"{action}:{resource_type}:{resource_id}",
+        ip_address=client_ip,
+        success=False,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Доступ запрещен",
+    )
+
+
+def ensure_subscription_access(
+    subscription: Subscription,
+    current_user: User,
+    client_ip: str | None = None,
+) -> Subscription:
+    ensure_resource_access(
+        resource_owner_id=subscription.user_id,
+        current_user=current_user,
+        resource_type="subscription",
+        resource_id=subscription.id,
+        privileged_roles={"operator", "admin"},
+        client_ip=client_ip,
+    )
+    return subscription
+
+
+def ensure_invoice_access(
+    invoice: Invoice,
+    current_user: User,
+    *,
+    action: str = "access",
+    client_ip: str | None = None,
+) -> Invoice:
+    ensure_resource_access(
+        resource_owner_id=invoice.user_id,
+        current_user=current_user,
+        resource_type="invoice",
+        resource_id=invoice.id,
+        action=action,
+        privileged_roles={"operator", "admin"},
+        client_ip=client_ip,
+    )
+    return invoice
 
 
 async def get_internal_service(

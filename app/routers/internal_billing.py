@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_internal_service
+from app.input_security import extract_client_ip
 from app.logging_config import AuditAction, log_audit, log_security_event
 from app.models import Invoice, Subscription, TariffPlan
 from app.schemas import InvoiceResponse
@@ -24,8 +25,7 @@ def generate_next_invoice(
     db: Session = Depends(get_db),
     x_forwarded_for: Optional[str] = Header(None)
 ):
-
-    client_ip = x_forwarded_for.split(',')[0] if x_forwarded_for else "internal"
+    client_ip = extract_client_ip(x_forwarded_for, fallback="internal")
 
     subscription = db.query(Subscription).filter(
         Subscription.id == subscription_id

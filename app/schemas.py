@@ -3,6 +3,12 @@ from datetime import datetime
 from typing import Optional, List
 import re
 
+from app.input_security import (
+    normalize_phone,
+    normalize_username,
+    validate_username_allowlist,
+)
+
 
 class UserRegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -13,16 +19,17 @@ class UserRegisterRequest(BaseModel):
     @field_validator('username')
     @classmethod
     def validate_username(cls, v):
-        if not re.match(r'^[a-zA-Z0-9_]+$', v):
-            raise ValueError('Username содержит недопустимые символы')
-        return v
+        return validate_username_allowlist(normalize_username(v))
+
+    @field_validator('email')
+    @classmethod
+    def normalize_email(cls, v):
+        return v.strip().lower()
     
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v):
-        if not re.match(r'^[+\d\s\-()]+$', v):
-            raise ValueError('Некорректный формат номера телефона')
-        return v
+        return normalize_phone(v)
     
     @field_validator('password')
     @classmethod
@@ -37,8 +44,13 @@ class UserRegisterRequest(BaseModel):
 
 
 class UserLoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v):
+        return validate_username_allowlist(normalize_username(v))
 
 
 class TokenResponse(BaseModel):
@@ -48,7 +60,12 @@ class TokenResponse(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str = Field(..., min_length=1)
+    refresh_token: str = Field(..., min_length=1, max_length=4096)
+
+    @field_validator('refresh_token')
+    @classmethod
+    def normalize_refresh_token(cls, v):
+        return v.strip()
 
 
 class UserResponse(BaseModel):

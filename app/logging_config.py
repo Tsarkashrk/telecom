@@ -4,6 +4,7 @@ from enum import Enum
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import database
+from app.input_security import sanitize_log_value
 from app.models import AuditLog
 
 logging.basicConfig(
@@ -37,12 +38,15 @@ def _persist_audit_record(
 ) -> None:
     db = None
     try:
+        sanitized_action = sanitize_log_value(action, max_length=100) or "unknown"
+        sanitized_details = sanitize_log_value(details)
+        sanitized_ip = sanitize_log_value(ip_address, max_length=50)
         db = database.SessionLocal()
         audit_record = AuditLog(
             user_id=user_id,
-            action=action[:100],
-            action_details=details,
-            ip_address=ip_address,
+            action=sanitized_action,
+            action_details=sanitized_details,
+            ip_address=sanitized_ip,
             success=success
         )
         db.add(audit_record)
@@ -63,14 +67,16 @@ def log_audit(
     ip_address: str | None = None,
     success: bool = True
 ) -> None:
+    sanitized_ip = sanitize_log_value(ip_address, max_length=50)
+    sanitized_details = sanitize_log_value(details)
     log_message = f"[AUDIT] Action: {action.value}"
     
     if user_id:
         log_message += f" | User ID: {user_id}"
-    if ip_address:
-        log_message += f" | IP: {ip_address}"
-    if details:
-        log_message += f" | Details: {details}"
+    if sanitized_ip:
+        log_message += f" | IP: {sanitized_ip}"
+    if sanitized_details:
+        log_message += f" | Details: {sanitized_details}"
     
     log_message += f" | Success: {success}"
     
@@ -82,8 +88,8 @@ def log_audit(
     _persist_audit_record(
         action=action.value,
         user_id=user_id,
-        details=details,
-        ip_address=ip_address,
+        details=sanitized_details,
+        ip_address=sanitized_ip,
         success=success
     )
 
@@ -95,14 +101,17 @@ def log_security_event(
     severity: str = "WARNING",
     ip_address: str | None = None
 ) -> None:
-    log_message = f"[SECURITY] Event: {event_type}"
+    sanitized_event_type = sanitize_log_value(event_type, max_length=100) or "unknown"
+    sanitized_reason = sanitize_log_value(reason)
+    sanitized_ip = sanitize_log_value(ip_address, max_length=50)
+    log_message = f"[SECURITY] Event: {sanitized_event_type}"
     
     if user_id:
         log_message += f" | User ID: {user_id}"
-    if ip_address:
-        log_message += f" | IP: {ip_address}"
-    if reason:
-        log_message += f" | Reason: {reason}"
+    if sanitized_ip:
+        log_message += f" | IP: {sanitized_ip}"
+    if sanitized_reason:
+        log_message += f" | Reason: {sanitized_reason}"
     
     if severity == "CRITICAL":
         logger.critical(log_message)
@@ -112,9 +121,9 @@ def log_security_event(
         logger.warning(log_message)
 
     _persist_audit_record(
-        action=f"security:{event_type}",
+        action=f"security:{sanitized_event_type}",
         user_id=user_id,
-        details=reason,
-        ip_address=ip_address,
+        details=sanitized_reason,
+        ip_address=sanitized_ip,
         success=False
     )
