@@ -158,6 +158,8 @@ export const authApi = {
 export const subscriptionApi = {
   getTariffs: () => apiRequest("/api/subscriptions/tariffs"),
   getSubscriptions: () => apiRequest("/api/subscriptions"),
+  getSubscription: (subscriptionId) =>
+    apiRequest(`/api/subscriptions/${subscriptionId}`),
   activateTariff: (tariffId) =>
     apiRequest("/api/subscriptions/activate", {
       method: "POST",
@@ -169,10 +171,32 @@ export const subscriptionApi = {
 
 export const invoiceApi = {
   getInvoices: () => apiRequest("/api/billing/invoices"),
+  getInvoice: (invoiceId) => apiRequest(`/api/billing/invoices/${invoiceId}`),
+  getInvoiceStatus: (invoiceId) =>
+    apiRequest(`/api/billing/invoices/${invoiceId}/status`),
   payInvoice: (invoiceId) =>
     apiRequest(`/api/billing/invoices/${invoiceId}/pay`, {
       method: "POST",
     }),
   getInvoicesByUser: (userId) =>
     apiRequest(`/api/billing/invoices/user/${userId}`),
+};
+
+export const publicApi = {
+  getRoot: async () => {
+    const response = await fetch(`${API_BASE_URL}/`);
+    const payload = await parseResponse(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "Не удалось загрузить сведения о сервисе");
+    }
+    return payload;
+  },
+  getHealth: async () => {
+    const response = await fetch(`${API_BASE_URL}/health`);
+    const payload = await parseResponse(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "Не удалось проверить состояние сервиса");
+    }
+    return payload;
+  },
 };

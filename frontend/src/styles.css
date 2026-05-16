@@ -191,7 +191,8 @@ button {
 }
 
 .form-grid input,
-.operator-form input {
+.operator-form input,
+.toolbar-input {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
@@ -202,7 +203,8 @@ button {
 }
 
 .form-grid input:focus,
-.operator-form input:focus {
+.operator-form input:focus,
+.toolbar-input:focus {
   border-color: rgba(82, 227, 194, 0.6);
   transform: translateY(-1px);
 }
@@ -280,6 +282,18 @@ button {
   justify-content: space-between;
 }
 
+.section-heading h3,
+.panel-card h3,
+.tariff-card h3 {
+  margin: 0 0 8px;
+}
+
+.section-heading p,
+.panel-card p,
+.tariff-card p {
+  margin: 0;
+}
+
 .topbar {
   display: flex;
   align-items: flex-start;
@@ -320,6 +334,15 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
 
+.dashboard-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.focus-layout {
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 0.95fr);
+  align-items: start;
+}
+
 .tariff-card,
 .subscription-card,
 .invoice-card {
@@ -333,6 +356,11 @@ button {
   border-radius: 28px;
   padding: 24px;
   box-shadow: var(--shadow);
+}
+
+.tariff-card.is-highlighted {
+  border-color: rgba(82, 227, 194, 0.45);
+  box-shadow: 0 24px 60px rgba(17, 179, 156, 0.18);
 }
 
 .tariff-head,
@@ -374,6 +402,11 @@ button {
   color: #ffd28f;
 }
 
+.status-pill.danger {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ffc1c1;
+}
+
 .feature-list,
 .data-list {
   margin: 0;
@@ -384,6 +417,143 @@ button {
 .panel-stack {
   display: grid;
   gap: 18px;
+}
+
+.stack-sm {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-inline {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.compact-actions {
+  flex-wrap: wrap;
+}
+
+.chip-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #dce7f8;
+  border-radius: 999px;
+  padding: 10px 14px;
+}
+
+.chip-button.active {
+  background: rgba(82, 227, 194, 0.16);
+  border-color: rgba(82, 227, 194, 0.32);
+  color: #fff;
+}
+
+.toolbar-input {
+  min-width: 260px;
+}
+
+.split-actions {
+  justify-content: space-between;
+}
+
+.detail-card {
+  min-height: 100%;
+}
+
+.detail-card.subtle {
+  background:
+    radial-gradient(circle at top right, rgba(82, 227, 194, 0.12), transparent 34%),
+    rgba(13, 23, 40, 0.82);
+}
+
+.info-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.info-row span {
+  color: var(--text-soft);
+}
+
+.info-row strong {
+  color: #fff;
+  text-align: right;
+}
+
+.record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.record-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  color: #f5f8ff;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.record-row:hover {
+  border-color: rgba(82, 227, 194, 0.24);
+  transform: translateY(-1px);
+}
+
+.record-row span:first-child {
+  color: var(--text-soft);
+}
+
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  text-transform: lowercase;
+}
+
+.role-customer {
+  background: rgba(82, 227, 194, 0.16);
+  color: #a6ffed;
+}
+
+.role-operator {
+  background: rgba(255, 180, 84, 0.18);
+  color: #ffd79b;
+}
+
+.role-admin {
+  background: rgba(125, 160, 255, 0.16);
+  color: #c5d5ff;
+}
+
+.role-matrix {
+  display: grid;
+  gap: 14px;
+}
+
+.matrix-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .empty-state {
@@ -410,10 +580,23 @@ button {
     var(--surface-strong);
 }
 
+.stat-card.warning {
+  border-color: rgba(255, 180, 84, 0.24);
+}
+
+.stat-card.success {
+  border-color: rgba(82, 227, 194, 0.24);
+}
+
+.stat-card.danger {
+  border-color: rgba(255, 107, 107, 0.26);
+}
+
 @media (max-width: 960px) {
   .auth-shell,
   .hero-panel,
-  .two-columns {
+  .two-columns,
+  .focus-layout {
     grid-template-columns: 1fr;
   }
 
@@ -443,5 +626,20 @@ button {
   .operator-form {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .record-row,
+  .matrix-row,
+  .info-row {
+    grid-template-columns: 1fr;
+  }
+
+  .info-row strong {
+    text-align: left;
+  }
+
+  .toolbar-input {
+    min-width: 0;
+    width: 100%;
   }
 }
