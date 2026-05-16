@@ -1,7 +1,8 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, DateTime, Float, ForeignKey, Boolean, Text
+from sqlalchemy import String, Integer, DateTime, Float, ForeignKey, Boolean, Text, text
 from datetime import datetime
 from typing import List, Optional
+from app.db_security import PLACEHOLDER_HASH
 
 
 class Base(DeclarativeBase):
@@ -15,7 +16,12 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     phone: Mapped[str] = mapped_column(String(20), unique=True)
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    legacy_password_marker: Mapped[str] = mapped_column(
+        "hashed_password",
+        String(255),
+        default=PLACEHOLDER_HASH,
+        server_default=text(f"'{PLACEHOLDER_HASH}'"),
+    )
     role: Mapped[str] = mapped_column(String(20), default="customer")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     refresh_token_version: Mapped[int] = mapped_column(Integer, default=0)
@@ -33,6 +39,23 @@ class User(Base):
     audit_logs: Mapped[List["AuditLog"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    credentials: Mapped[Optional["UserCredential"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class UserCredential(Base):
+    __tablename__ = "user_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    password_updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="credentials")
 
 
 class TariffPlan(Base):

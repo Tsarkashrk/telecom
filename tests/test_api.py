@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timedelta
@@ -9,7 +9,8 @@ from app import database as database_module
 from app import logging_config as logging_config_module
 from app.main import app
 from app.database import get_db
-from app.models import Base, Invoice, Subscription, TariffPlan, User
+from app.models import Base, Invoice, Subscription, TariffPlan, User, UserCredential
+from app.db_security import PLACEHOLDER_HASH, migrate_user_passwords
 from app.security import hash_password
 
 SQLALCHEMY_DATABASE_URL = "sqlite://"
@@ -80,9 +81,9 @@ def setup_test_data():
         username="testuser",
         email="test@example.com",
         phone="+7-999-000-0001",
-        hashed_password=hash_password("TestPassword@123"),
         role="customer",
-        is_active=True
+        is_active=True,
+        credentials=UserCredential(hashed_password=hash_password("TestPassword@123"))
     )
     db.add(test_user)
     
@@ -90,9 +91,9 @@ def setup_test_data():
         username="admin",
         email="admin@example.com",
         phone="+7-999-000-0002",
-        hashed_password=hash_password("AdminPassword@123"),
         role="admin",
-        is_active=True
+        is_active=True,
+        credentials=UserCredential(hashed_password=hash_password("AdminPassword@123"))
     )
     db.add(admin_user)
 
@@ -100,9 +101,9 @@ def setup_test_data():
         username="operator1",
         email="operator@example.com",
         phone="+7-999-000-0003",
-        hashed_password=hash_password("OperatorPassword@123"),
         role="operator",
-        is_active=True
+        is_active=True,
+        credentials=UserCredential(hashed_password=hash_password("OperatorPassword@123"))
     )
     db.add(operator_user)
 
@@ -110,9 +111,9 @@ def setup_test_data():
         username="outsider",
         email="outsider@example.com",
         phone="+7-999-000-0004",
-        hashed_password=hash_password("OutsiderPassword@123"),
         role="customer",
-        is_active=True
+        is_active=True,
+        credentials=UserCredential(hashed_password=hash_password("OutsiderPassword@123"))
     )
     db.add(outsider_user)
 
@@ -120,9 +121,9 @@ def setup_test_data():
         username="victim",
         email="victim@example.com",
         phone="+7-999-000-0005",
-        hashed_password=hash_password("VictimPassword@123"),
         role="customer",
-        is_active=True
+        is_active=True,
+        credentials=UserCredential(hashed_password=hash_password("VictimPassword@123"))
     )
     db.add(victim_user)
     
@@ -168,6 +169,56 @@ def setup_test_data():
 
 
 class TestAuth:
+
+    def test_legacy_passwords_are_migrated_to_separate_table(self):
+        legacy_hash = hash_password("LegacyPassword@123")
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN hashed_password VARCHAR(255)")
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO users (
+                        username, email, phone, hashed_password, role,
+                        is_active, refresh_token_version, created_at, updated_at
+                    )
+                    VALUES (
+                        :username, :email, :phone, :hashed_password, :role,
+                        :is_active, :refresh_token_version, :created_at, :updated_at
+                    )
+                    """
+                ),
+                {
+                    "username": "legacyuser",
+                    "email": "legacy@example.com",
+                    "phone": "+7-999-200-0001",
+                    "hashed_password": legacy_hash,
+                    "role": "customer",
+                    "is_active": True,
+                    "refresh_token_version": 0,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow(),
+                },
+            )
+
+        migrate_user_passwords(engine)
+
+        db = TestingSessionLocal()
+        try:
+            legacy_user = db.query(User).filter(User.username == "legacyuser").first()
+            assert legacy_user is not None
+            assert legacy_user.credentials is not None
+            assert legacy_user.credentials.hashed_password == legacy_hash
+
+            scrubbed_hash = db.execute(
+                text("SELECT hashed_password FROM users WHERE id = :user_id"),
+                {"user_id": legacy_user.id},
+            ).scalar_one()
+            assert scrubbed_hash == PLACEHOLDER_HASH
+        finally:
+            db.close()
     
     def test_register_user_success(self):
         response = client.post(

@@ -67,7 +67,7 @@ def create_refresh_token(data: dict, token_version: int) -> str:
         algorithm=settings.algorithm
     )
     return encoded_jwt
-
+    
 
 def verify_token(token: str, expected_type: Optional[str] = None) -> Optional[dict]:
     try:

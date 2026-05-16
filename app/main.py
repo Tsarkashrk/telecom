@@ -10,6 +10,7 @@ from app.models import Base
 from app.routers import auth, subscriptions, invoices, internal_billing
 from app.config import settings
 from app.logging_config import log_security_event
+from app.db_security import migrate_user_passwords
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,8 @@ class RequestSizeExceededError(Exception):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application startup")
+    Base.metadata.create_all(bind=engine)
+    migrate_user_passwords(engine)
     yield
     logger.info("Application shutdown")
 app = FastAPI(

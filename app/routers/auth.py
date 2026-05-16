@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserCredential
 from app.schemas import (
     UserRegisterRequest, UserLoginRequest, RefreshTokenRequest, TokenResponse,
     UserResponse
@@ -19,6 +19,7 @@ from app.security import (
 from app.dependencies import get_current_user
 from app.input_security import extract_client_ip
 from app.logging_config import log_audit, log_security_event, AuditAction
+from app.db_security import PLACEHOLDER_HASH
 
 router = APIRouter()
 
@@ -98,8 +99,9 @@ def register_user(
         username=user_data.username,
         email=user_data.email,
         phone=user_data.phone,
-        hashed_password=hashed_password,
-        role="customer"
+        legacy_password_marker=PLACEHOLDER_HASH,
+        role="customer",
+        credentials=UserCredential(hashed_password=hashed_password),
     )
     
     db.add(new_user)
@@ -136,8 +138,14 @@ def login_user(
         )
     
     user = db.query(User).filter(User.username == credentials.username).first()
-    
-    if user is None or not verify_password(credentials.password, user.hashed_password):
+
+    password_hash = (
+        user.credentials.hashed_password
+        if user is not None and user.credentials is not None
+        else None
+    )
+
+    if user is None or password_hash is None or not verify_password(credentials.password, password_hash):
         record_login_attempt(credentials.username, False)
         log_security_event(
             event_type="failed_login",
